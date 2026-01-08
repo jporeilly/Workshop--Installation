@@ -53,6 +53,12 @@ RUN unzip /tmp/pentaho-server-*.zip -d ${INSTALLATION_PATH} \
     && chmod +x ${PENTAHO_SERVER}/*.sh \
     && chmod +x ${PENTAHO_SERVER}/tomcat/bin/*.sh
 
+# Download commons-dbcp and commons-pool for Jackrabbit
+RUN curl -L -o ${PENTAHO_SERVER}/tomcat/lib/commons-dbcp-1.4.jar \
+    https://repo1.maven.org/maven2/commons-dbcp/commons-dbcp/1.4/commons-dbcp-1.4.jar \
+    && curl -L -o ${PENTAHO_SERVER}/tomcat/lib/commons-pool-1.6.jar \
+    https://repo1.maven.org/maven2/commons-pool/commons-pool/1.6/commons-pool-1.6.jar
+
 # Copy entrypoint script
 COPY entrypoint/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
