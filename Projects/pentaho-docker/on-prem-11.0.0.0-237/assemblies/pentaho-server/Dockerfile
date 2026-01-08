@@ -51,7 +51,11 @@ COPY stagedArtifacts/pentaho-server-*.zip /tmp/
 RUN unzip /tmp/pentaho-server-*.zip -d ${INSTALLATION_PATH} \
     && rm /tmp/pentaho-server-*.zip \
     && chmod +x ${PENTAHO_SERVER}/*.sh \
-    && chmod +x ${PENTAHO_SERVER}/tomcat/bin/*.sh
+    && chmod +x ${PENTAHO_SERVER}/tomcat/bin/*.sh \
+    && mkdir -p ${PENTAHO_SERVER}/tomcat/logs \
+    && chmod 755 ${PENTAHO_SERVER}/tomcat/logs \
+    && mkdir -p ${PENTAHO_SERVER}/logs \
+    && chmod 755 ${PENTAHO_SERVER}/logs
 
 # Download commons-dbcp and commons-pool for Jackrabbit
 RUN curl -L -o ${PENTAHO_SERVER}/tomcat/lib/commons-dbcp-1.4.jar \
