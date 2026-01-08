@@ -1,24 +1,24 @@
-#!/bin/bash
-#
-# Run Quartz database setup as pentaho user
-# Per Pentaho Academy installation guide
-#
-set -e
+--
+-- Pentaho Quartz Scheduler Database Setup
+-- PostgreSQL 17 - pentaho_user is owner
+--
 
-echo "Running Quartz setup as pentaho user..."
+\connect quartz
 
-PGPASSWORD=password psql -U pentaho -d quartz << 'EOSQL'
--- PostgreSQL 15+ requires explicit schema privileges
+-- Grant schema permissions
 GRANT ALL ON SCHEMA public TO pentaho_user;
 GRANT CREATE ON SCHEMA public TO pentaho_user;
+ALTER SCHEMA public OWNER TO pentaho_user;
 
--- Set default privileges for future objects created by pentaho user
-ALTER DEFAULT PRIVILEGES FOR ROLE pentaho IN SCHEMA public 
+-- Set default privileges
+ALTER DEFAULT PRIVILEGES FOR ROLE pentaho_user IN SCHEMA public 
     GRANT ALL ON TABLES TO pentaho_user;
-ALTER DEFAULT PRIVILEGES FOR ROLE pentaho IN SCHEMA public 
+ALTER DEFAULT PRIVILEGES FOR ROLE pentaho_user IN SCHEMA public 
     GRANT ALL ON SEQUENCES TO pentaho_user;
 
--- Begin Quartz table creation
+-- Set role to pentaho_user for table creation (tables will be owned by pentaho_user)
+SET ROLE pentaho_user;
+
 BEGIN;
 
 DROP TABLE IF EXISTS QRTZ6_FIRED_TRIGGERS;
@@ -204,20 +204,6 @@ CREATE INDEX IDX_QRTZ6_FT_JG ON QRTZ6_FIRED_TRIGGERS (SCHED_NAME, JOB_GROUP);
 CREATE INDEX IDX_QRTZ6_FT_T_G ON QRTZ6_FIRED_TRIGGERS (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP);
 CREATE INDEX IDX_QRTZ6_FT_TG ON QRTZ6_FIRED_TRIGGERS (SCHED_NAME, TRIGGER_GROUP);
 
--- Transfer ownership to pentaho_user
-ALTER TABLE qrtz6_fired_triggers OWNER TO pentaho_user;
-ALTER TABLE qrtz6_paused_trigger_grps OWNER TO pentaho_user;
-ALTER TABLE qrtz6_scheduler_state OWNER TO pentaho_user;
-ALTER TABLE qrtz6_locks OWNER TO pentaho_user;
-ALTER TABLE qrtz6_simple_triggers OWNER TO pentaho_user;
-ALTER TABLE qrtz6_cron_triggers OWNER TO pentaho_user;
-ALTER TABLE qrtz6_blob_triggers OWNER TO pentaho_user;
-ALTER TABLE qrtz6_simprop_triggers OWNER TO pentaho_user;
-ALTER TABLE qrtz6_triggers OWNER TO pentaho_user;
-ALTER TABLE qrtz6_job_details OWNER TO pentaho_user;
-ALTER TABLE qrtz6_calendars OWNER TO pentaho_user;
-
 COMMIT;
-EOSQL
 
-echo "Quartz setup complete."
+RESET ROLE;

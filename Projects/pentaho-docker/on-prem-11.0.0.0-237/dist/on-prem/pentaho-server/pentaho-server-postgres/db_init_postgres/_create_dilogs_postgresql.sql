@@ -1,17 +1,14 @@
-#!/bin/bash
-#
-# Run Pentaho Logging tables setup as pentaho user
-# Per Pentaho Academy installation guide
-#
-set -e
+--
+-- Pentaho Logging Tables for PostgreSQL 17
+-- Run as pentaho superuser - hibuser owns pentaho_dilogs schema
+--
 
-echo "Running Logging tables setup as pentaho user..."
+\connect hibernate
 
-PGPASSWORD=password psql -U pentaho -d hibernate << 'EOSQL'
--- Ensure hibuser can create schemas
-GRANT CREATE ON DATABASE hibernate TO hibuser;
+CREATE SCHEMA IF NOT EXISTS pentaho_dilogs AUTHORIZATION hibuser;
 
-CREATE SCHEMA IF NOT EXISTS pentaho_dilogs;
+-- Set role to hibuser for table creation (tables will be owned by hibuser)
+SET ROLE hibuser;
 
 -- Job log table
 CREATE TABLE pentaho_dilogs.job_logs
@@ -179,11 +176,4 @@ CREATE TABLE pentaho_dilogs.metrics_logs
   METRICS_VALUE BIGINT
 );
 
--- Grant schema ownership and privileges to hibuser
-ALTER SCHEMA pentaho_dilogs OWNER TO hibuser;
-GRANT ALL ON ALL TABLES IN SCHEMA pentaho_dilogs TO hibuser;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA pentaho_dilogs TO hibuser;
-GRANT USAGE ON SCHEMA pentaho_dilogs TO hibuser;
-EOSQL
-
-echo "Logging tables setup complete."
+RESET ROLE;

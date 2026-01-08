@@ -1,13 +1,15 @@
 --
 -- Pentaho Operations Mart Tables for PostgreSQL 17
 -- Creates pentaho_operations_mart schema in hibernate database
--- Called by 5_run_mart_as_pentaho.sh as pentaho user
+-- Run as pentaho superuser - hibuser owns pentaho_operations_mart schema
 --
 
--- Ensure hibuser can create schemas (may already be granted)
-GRANT CREATE ON DATABASE hibernate TO hibuser;
+\connect hibernate
 
-CREATE SCHEMA IF NOT EXISTS pentaho_operations_mart;
+CREATE SCHEMA IF NOT EXISTS pentaho_operations_mart AUTHORIZATION hibuser;
+
+-- Set role to hibuser for table creation (tables will be owned by hibuser)
+SET ROLE hibuser;
 
 --
 -- SHARED between BA & DI Data Mart - pentaho_operations_mart.DIM_DATE
@@ -468,8 +470,4 @@ CREATE TABLE pentaho_operations_mart.PRO_AUDIT_TRACKER (
 CREATE INDEX IDX_PRO_AUDIT_TRACKER_AUDIT_TIME ON pentaho_operations_mart.PRO_AUDIT_STAGING(audit_time);
 INSERT INTO pentaho_operations_mart.PRO_AUDIT_TRACKER values (timestamptz 'epoch');
 
--- Grant schema ownership and privileges to hibuser
-ALTER SCHEMA pentaho_operations_mart OWNER TO hibuser;
-GRANT ALL ON ALL TABLES IN SCHEMA pentaho_operations_mart TO hibuser;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA pentaho_operations_mart TO hibuser;
-GRANT USAGE ON SCHEMA pentaho_operations_mart TO hibuser;
+RESET ROLE;
