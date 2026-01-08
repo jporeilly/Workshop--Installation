@@ -15,9 +15,9 @@
   <Security appName="Jackrabbit">
     <SecurityManager class="org.apache.jackrabbit.core.DefaultSecurityManager" workspaceName="security"/>
     <AccessManager class="org.apache.jackrabbit.core.security.DefaultAccessManager"/>
-    <LoginModule class="org.pentaho.platform.repository2.unified.jcr.jackrabbit.security.SpringSecurityLoginModule">
+    <LoginModule class="org.apache.jackrabbit.core.security.authentication.DefaultLoginModule">
       <param name="anonymousId" value="anonymous"/>
-      <param name="adminId" value="pentahoRepoAdmin"/>
+      <param name="adminId" value="admin"/>
     </LoginModule>
   </Security>
 
