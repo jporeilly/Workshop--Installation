@@ -1,68 +1,66 @@
 --
 -- Pentaho Server 11 - PostgreSQL 17 Database Initialization
--- Consolidated script for Docker container initialization
--- This script runs as postgres superuser in docker-entrypoint-initdb.d
---
--- Databases: jackrabbit, quartz, hibernate
--- Users: jcr_user, pentaho_user, hibuser
+-- STEP 0: Run as postgres superuser to create pentaho user and databases
+-- Per Pentaho Academy installation guide
 --
 
 -- ============================================================================
--- STEP 1: Create all database users with scram-sha-256 passwords
+-- STEP 1: Create pentaho superuser (as per Pentaho installation guide)
 -- ============================================================================
 
--- Drop existing users if they exist (clean install)
+DROP USER IF EXISTS pentaho;
+CREATE USER pentaho WITH LOGIN SUPERUSER PASSWORD 'password';
+
+-- ============================================================================
+-- STEP 2: Create application database users
+-- ============================================================================
+
 DROP USER IF EXISTS jcr_user;
 DROP USER IF EXISTS pentaho_user;
 DROP USER IF EXISTS hibuser;
 
--- Create users with LOGIN privilege
 CREATE USER jcr_user WITH LOGIN PASSWORD 'password';
 CREATE USER pentaho_user WITH LOGIN PASSWORD 'password';
 CREATE USER hibuser WITH LOGIN PASSWORD 'password';
 
 -- ============================================================================
--- STEP 2: Create all databases with proper ownership
+-- STEP 3: Create all databases owned by pentaho superuser
 -- ============================================================================
 
--- Drop existing databases if they exist (clean install)
 DROP DATABASE IF EXISTS jackrabbit;
 DROP DATABASE IF EXISTS quartz;
 DROP DATABASE IF EXISTS hibernate;
 
--- Create Jackrabbit database (JCR repository)
 CREATE DATABASE jackrabbit 
-    WITH OWNER = jcr_user 
+    WITH OWNER = pentaho 
     ENCODING = 'UTF8' 
     TEMPLATE = template0
     TABLESPACE = pg_default
     CONNECTION LIMIT = -1;
 
--- Create Quartz database (Scheduler)
 CREATE DATABASE quartz 
-    WITH OWNER = pentaho_user 
+    WITH OWNER = pentaho 
     ENCODING = 'UTF8' 
     TEMPLATE = template0
     TABLESPACE = pg_default
     CONNECTION LIMIT = -1;
 
--- Create Hibernate database (Repository/Audit)
 CREATE DATABASE hibernate 
-    WITH OWNER = hibuser 
+    WITH OWNER = pentaho 
     ENCODING = 'UTF8' 
     TEMPLATE = template0
     TABLESPACE = pg_default
     CONNECTION LIMIT = -1;
 
 -- ============================================================================
--- STEP 3: Grant database-level privileges
+-- STEP 4: Grant database-level privileges
 -- ============================================================================
 
-GRANT ALL PRIVILEGES ON DATABASE jackrabbit TO jcr_user;
-GRANT ALL PRIVILEGES ON DATABASE quartz TO pentaho_user;
-GRANT ALL PRIVILEGES ON DATABASE hibernate TO hibuser;
+GRANT ALL PRIVILEGES ON DATABASE jackrabbit TO jcr_user, pentaho;
+GRANT ALL PRIVILEGES ON DATABASE quartz TO pentaho_user, pentaho;
+GRANT ALL PRIVILEGES ON DATABASE hibernate TO hibuser, pentaho;
 
--- Grant CONNECT to all Pentaho users on all databases for cross-database access
+-- Cross-database CONNECT privileges
 GRANT CONNECT ON DATABASE jackrabbit TO pentaho_user, hibuser;
 GRANT CONNECT ON DATABASE quartz TO jcr_user, hibuser;
 GRANT CONNECT ON DATABASE hibernate TO jcr_user, pentaho_user;

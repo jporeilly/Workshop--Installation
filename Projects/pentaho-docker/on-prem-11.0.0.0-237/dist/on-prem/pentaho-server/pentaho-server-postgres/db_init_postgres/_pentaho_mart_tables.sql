@@ -1,14 +1,13 @@
 --
 -- Pentaho Operations Mart Tables for PostgreSQL 17
 -- Creates pentaho_operations_mart schema in hibernate database
--- User/Database created by 0_init_pentaho_databases.sql
+-- Called by 5_run_mart_as_pentaho.sh as pentaho user
 --
-\connect hibernate
 
 -- Ensure hibuser can create schemas (may already be granted)
 GRANT CREATE ON DATABASE hibernate TO hibuser;
 
-CREATE SCHEMA pentaho_operations_mart;
+CREATE SCHEMA IF NOT EXISTS pentaho_operations_mart;
 
 --
 -- SHARED between BA & DI Data Mart - pentaho_operations_mart.DIM_DATE
