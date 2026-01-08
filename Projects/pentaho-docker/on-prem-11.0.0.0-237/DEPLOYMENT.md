@@ -29,10 +29,10 @@ curl -L -o postgresql-42.7.8.jar https://jdbc.postgresql.org/download/postgresql
 cd dist/on-prem/pentaho-server/pentaho-server-postgres
 
 # Build and start containers
-docker-compose -f docker-compose-postgres.yaml up --build -d
+docker compose -f docker-compose-postgres.yaml up --build -d
 
 # View logs
-docker-compose -f docker-compose-postgres.yaml logs -f
+docker compose -f docker-compose-postgres.yaml logs -f
 ```
 
 ### 3. Access Pentaho Server
@@ -87,22 +87,22 @@ on-prem-11.0.0.0-237/
 
 ```bash
 # Start containers
-docker-compose -f docker-compose-postgres.yaml up -d
+docker compose -f docker-compose-postgres.yaml up -d
 
 # Stop containers
-docker-compose -f docker-compose-postgres.yaml down
+docker compose -f docker-compose-postgres.yaml down
 
 # View Pentaho logs
-docker-compose -f docker-compose-postgres.yaml logs -f pentaho-server
+docker compose -f docker-compose-postgres.yaml logs -f pentaho-server
 
 # View PostgreSQL logs
-docker-compose -f docker-compose-postgres.yaml logs -f repository
+docker compose -f docker-compose-postgres.yaml logs -f repository
 
 # Rebuild after changes
-docker-compose -f docker-compose-postgres.yaml up --build -d
+docker compose -f docker-compose-postgres.yaml up --build -d
 
 # Remove volumes (clean install)
-docker-compose -f docker-compose-postgres.yaml down -v
+docker compose -f docker-compose-postgres.yaml down -v
 ```
 
 ## Troubleshooting
@@ -110,10 +110,10 @@ docker-compose -f docker-compose-postgres.yaml down -v
 ### Container won't start
 ```bash
 # Check container status
-docker-compose -f docker-compose-postgres.yaml ps
+docker compose -f docker-compose-postgres.yaml ps
 
 # Check logs for errors
-docker-compose -f docker-compose-postgres.yaml logs pentaho-server
+docker compose -f docker-compose-postgres.yaml logs pentaho-server
 ```
 
 ### Database connection issues
@@ -127,8 +127,8 @@ docker exec pentaho-postgres-17 psql -U postgres -c "\l"
 
 ### Reset everything
 ```bash
-docker-compose -f docker-compose-postgres.yaml down -v
-docker-compose -f docker-compose-postgres.yaml up --build -d
+docker compose -f docker-compose-postgres.yaml down -v
+docker compose -f docker-compose-postgres.yaml up --build -d
 ```
 
 ## Production Considerations
@@ -142,6 +142,6 @@ docker-compose -f docker-compose-postgres.yaml up --build -d
 
 3. **Backup volumes** - Regularly backup `repository-data` volume
 
-4. **Resource limits** - Adjust CPU/memory in docker-compose.yaml
+4. **Resource limits** - Adjust CPU/memory in docker-compose-postgres.yaml
 
 5. **Licensing** - Apply valid Pentaho license after first login
