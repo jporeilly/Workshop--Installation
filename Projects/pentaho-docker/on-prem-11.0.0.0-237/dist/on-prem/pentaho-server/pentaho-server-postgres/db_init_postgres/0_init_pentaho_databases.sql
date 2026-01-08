@@ -23,6 +23,11 @@ CREATE USER jcr_user WITH LOGIN PASSWORD 'password';
 CREATE USER pentaho_user WITH LOGIN PASSWORD 'password';
 CREATE USER hibuser WITH LOGIN PASSWORD 'password';
 
+-- Grant role membership so pentaho can SET ROLE to these users
+GRANT jcr_user TO pentaho;
+GRANT pentaho_user TO pentaho;
+GRANT hibuser TO pentaho;
+
 -- ============================================================================
 -- STEP 3: Create all databases owned by pentaho superuser
 -- ============================================================================

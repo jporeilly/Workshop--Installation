@@ -39,6 +39,8 @@
 	  <property name="properties">
 	    <props>
 	      <prop key="admin">password,Administrator,Authenticated</prop>
+	      <prop key="pentahoRepoAdmin">password,Administrator,Authenticated</prop>
+	      <prop key="super">password,SysAdmin,Authenticated</prop>
 	    </props>
 	  </property>
 	</bean>
