@@ -1,0 +1,5 @@
+# Ignore Pentaho distribution ZIP files (these should not be committed)
+*.zip
+
+# Keep the README
+!README.md

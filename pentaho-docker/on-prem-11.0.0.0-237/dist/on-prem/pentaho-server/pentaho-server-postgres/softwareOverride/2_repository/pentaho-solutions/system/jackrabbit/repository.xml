@@ -1,0 +1,116 @@
+<?xml version="1.0"?>
+<!DOCTYPE Repository
+          PUBLIC "-//The Apache Software Foundation//DTD Jackrabbit 2.0//EN"
+          "http://jackrabbit.apache.org/dtd/repository-2.0.dtd">
+<!--
+  Pentaho Jackrabbit Repository Configuration for PostgreSQL 17
+  Updated for Pentaho Server 11
+-->
+<Repository>
+  <!--
+    Virtual file system where the repository stores global state
+  -->
+  <FileSystem class="org.apache.jackrabbit.core.fs.db.DbFileSystem">
+    <param name="driver" value="org.postgresql.Driver"/>
+    <param name="url" value="jdbc:postgresql://repository:5432/jackrabbit"/>
+    <param name="user" value="jcr_user"/>
+    <param name="password" value="password"/>
+    <param name="schema" value="postgresql"/>
+    <param name="schemaObjectPrefix" value="fs_repos_"/>
+  </FileSystem>
+
+  <!--
+    Security configuration
+  -->
+  <Security appName="Jackrabbit">
+    <SecurityManager class="org.apache.jackrabbit.core.DefaultSecurityManager" workspaceName="security"/>
+    <AccessManager class="org.apache.jackrabbit.core.security.DefaultAccessManager"/>
+    <LoginModule class="org.pentaho.platform.repository2.unified.jcr.jackrabbit.security.SpringSecurityLoginModule"/>
+  </Security>
+
+  <!--
+    Location of workspaces
+  -->
+  <Workspaces rootPath="${rep.home}/workspaces" defaultWorkspace="default"/>
+
+  <!--
+    Workspace configuration template
+  -->
+  <Workspace name="${wsp.name}">
+    <FileSystem class="org.apache.jackrabbit.core.fs.db.DbFileSystem">
+      <param name="driver" value="org.postgresql.Driver"/>
+      <param name="url" value="jdbc:postgresql://repository:5432/jackrabbit"/>
+      <param name="user" value="jcr_user"/>
+      <param name="password" value="password"/>
+      <param name="schema" value="postgresql"/>
+      <param name="schemaObjectPrefix" value="fs_ws_"/>
+    </FileSystem>
+
+    <PersistenceManager class="org.apache.jackrabbit.core.persistence.bundle.PostgreSQLPersistenceManager">
+      <param name="driver" value="org.postgresql.Driver"/>
+      <param name="url" value="jdbc:postgresql://repository:5432/jackrabbit"/>
+      <param name="user" value="jcr_user"/>
+      <param name="password" value="password"/>
+      <param name="schema" value="postgresql"/>
+      <param name="schemaObjectPrefix" value="${wsp.name}_pm_ws_"/>
+    </PersistenceManager>
+
+    <SearchIndex class="org.apache.jackrabbit.core.query.lucene.SearchIndex">
+      <param name="path" value="${wsp.home}/index"/>
+      <param name="supportHighlighting" value="true"/>
+    </SearchIndex>
+  </Workspace>
+
+  <!--
+    Versioning configuration
+  -->
+  <Versioning rootPath="${rep.home}/version">
+    <FileSystem class="org.apache.jackrabbit.core.fs.db.DbFileSystem">
+      <param name="driver" value="org.postgresql.Driver"/>
+      <param name="url" value="jdbc:postgresql://repository:5432/jackrabbit"/>
+      <param name="user" value="jcr_user"/>
+      <param name="password" value="password"/>
+      <param name="schema" value="postgresql"/>
+      <param name="schemaObjectPrefix" value="fs_ver_"/>
+    </FileSystem>
+
+    <PersistenceManager class="org.apache.jackrabbit.core.persistence.bundle.PostgreSQLPersistenceManager">
+      <param name="driver" value="org.postgresql.Driver"/>
+      <param name="url" value="jdbc:postgresql://repository:5432/jackrabbit"/>
+      <param name="user" value="jcr_user"/>
+      <param name="password" value="password"/>
+      <param name="schema" value="postgresql"/>
+      <param name="schemaObjectPrefix" value="pm_ver_"/>
+    </PersistenceManager>
+  </Versioning>
+
+  <!--
+    Cluster configuration for high availability (optional)
+  -->
+  <Cluster id="node1">
+    <Journal class="org.apache.jackrabbit.core.journal.DatabaseJournal">
+      <param name="revision" value="${rep.home}/revision.log"/>
+      <param name="driver" value="org.postgresql.Driver"/>
+      <param name="url" value="jdbc:postgresql://repository:5432/jackrabbit"/>
+      <param name="user" value="jcr_user"/>
+      <param name="password" value="password"/>
+      <param name="schema" value="postgresql"/>
+      <param name="schemaObjectPrefix" value="cl_j_"/>
+    </Journal>
+  </Cluster>
+
+  <!--
+    DataStore for binary content
+  -->
+  <DataStore class="org.apache.jackrabbit.core.data.db.DbDataStore">
+    <param name="driver" value="org.postgresql.Driver"/>
+    <param name="url" value="jdbc:postgresql://repository:5432/jackrabbit"/>
+    <param name="user" value="jcr_user"/>
+    <param name="password" value="password"/>
+    <param name="databaseType" value="postgresql"/>
+    <param name="minRecordLength" value="1024"/>
+    <param name="maxConnections" value="3"/>
+    <param name="copyWhenReading" value="true"/>
+    <param name="schemaObjectPrefix" value="ds_"/>
+  </DataStore>
+</Repository>
