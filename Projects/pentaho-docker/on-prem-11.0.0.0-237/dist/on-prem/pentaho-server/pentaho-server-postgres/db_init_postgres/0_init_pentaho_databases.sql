@@ -29,7 +29,7 @@ GRANT pentaho_user TO pentaho;
 GRANT hibuser TO pentaho;
 
 -- ============================================================================
--- STEP 3: Create all databases owned by pentaho superuser
+-- STEP 3: Create databases owned by application users
 -- ============================================================================
 
 DROP DATABASE IF EXISTS jackrabbit;
@@ -37,21 +37,21 @@ DROP DATABASE IF EXISTS quartz;
 DROP DATABASE IF EXISTS hibernate;
 
 CREATE DATABASE jackrabbit 
-    WITH OWNER = pentaho 
+    WITH OWNER = jcr_user 
     ENCODING = 'UTF8' 
     TEMPLATE = template0
     TABLESPACE = pg_default
     CONNECTION LIMIT = -1;
 
 CREATE DATABASE quartz 
-    WITH OWNER = pentaho 
+    WITH OWNER = pentaho_user 
     ENCODING = 'UTF8' 
     TEMPLATE = template0
     TABLESPACE = pg_default
     CONNECTION LIMIT = -1;
 
 CREATE DATABASE hibernate 
-    WITH OWNER = pentaho 
+    WITH OWNER = hibuser 
     ENCODING = 'UTF8' 
     TEMPLATE = template0
     TABLESPACE = pg_default

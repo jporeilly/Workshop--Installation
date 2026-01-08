@@ -5,7 +5,7 @@
 #
 set -e
 
-SCRIPT_DIR=/docker-entrypoint-initdb.d
+SCRIPT_DIR=/docker-entrypoint-initdb.d/sql
 
 echo "=========================================="
 echo "Session 1: JCR setup"
