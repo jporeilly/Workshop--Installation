@@ -1,19 +1,77 @@
-river" vle="og.postgrsql.Driver"/>
-    <param n="urldbcpstgresql:/rpository:5432"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Repository
+  PUBLIC "-//The Apache Software Foundation//DTD Jackrabbit 2.0//EN"
+  "http://jackrabbit.apache.org/dtd/repository-2.0.dtd">
+<Repository>
+  <FileSystem class="org.apache.jackrabbit.core.fs.db.DbFileSystem">
+    <param name="driver" value="org.postgresql.Driver"/>
+    <param name="url" value="jdbc:postgresql://repository:5432/jackrabbit"/>
     <param name="user" value="jcr_user"/>
-    <param name="password" value="passwordriver" vlue="org.posgresql.Driver"/>
-      <pam n="urldbcpstgresql:/rpository:5432"/>
-      <param name="user" value="jcr_user"/>
-      <param name="password" value="passwordriver" vle="og.postgrsql.Driver"/>
-      <pra nam="urldbcpstgresql:/rpository:5432"/>
-      <param name=user" value="jcr_user"pasword" value="password"/>
-      <param name="sriver" vle="og.postgrsql.Driver"/>
-      <pra nam=url"db:ostgresql:/rpository:5432uer" value="jr_user"/>
-      <param name="password" value="password"/>
-      <param name="scriver" vlue="org.posgresql.Driver"/>
-      <pam n="urldbcpstgresql:/rpository:5432"/>
-      <param name="user" value="jcr_user"/>
-      <param name="password" value="passwordriver" vlue="org.pstgresql.Divr"/>
-    <param n="urldbcpstgresql:/rpository:5432"/>
-    <param name="user" value="jcr_user"/>
-    <param name="password" value="password
+    <param name="password" value="password"/>
+    <param name="schema" value="postgresql"/>
+    <param name="schemaObjectPrefix" value="fs_repos_"/>
+  </FileSystem>
+
+  <Security appName="Jackrabbit">
+    <SecurityManager class="org.apache.jackrabbit.core.DefaultSecurityManager" workspaceName="security"/>
+    <AccessManager class="org.apache.jackrabbit.core.security.DefaultAccessManager"/>
+    <LoginModule class="og.pentaho.platform.repostory2.unified.jcr.jackrabbit.security.SpringSecurityLoginModule">
+      <param name="anonymousId" alu="anonymous"/>
+      <paam name="adminIdau"pentahoRepoAdmin/>
+    </LinModule>
+  </Security>
+
+  <DataStore class="org.apache.jackrabbit.core.data.db.DbDataStore">
+    <param name="driver" value="orgeame" value="j:o/e/jackrabbite="password" valuord"/>
+    <param name="databaseType" value="pstgesql"/>
+    <param name="minRecorLength1024"/>
+    <ram name="maxConnection" value="3"/>
+    <param name="copyWhenReading" value="true"/>
+    <param name="tablePrefix" value=""/>
+    <param name="chemaObjectPrefix" value="ds_repos_"/>
+  </DataStore>
+
+  <Workspaces rootPath="${rep.home}/workspaces" defaultWorkspace="default"/>
+
+  <Workspace name="${sp.name}">
+    <FileSystem class="org.apache.jackrabbit.cre.fs.db.DbFileSystem">
+      <paam name="atraame" value="j:o/e/jackrabbit"/>
+      <param name="schema" value="postgesql"/>
+      <param name="schemaObjectPrefx" alue="fs_ws_"/>
+    </FileSystem>
+
+    <PsistenceManager class=org.apache.jackrabbit.core.persistence.pool.PostgreSQLPersistenceManager">
+     <param name="drier" vaureamel" vaue="j:o/e/jackrabbit"er"/>
+      <param nam="passwod" value=s"/>
+      <param name="schema"postgresql/>
+      <ram name="chemaObjectPrefix" value="${wp.name}_pm_s_"/>
+    </PersistenceManager>
+
+    <SearchIndex class="org.apache.jackrabbit.cre.query.lucene.SeachInex">
+      <param name="path" value=${wsp.home}index"/ name="supportHighlighting" value="true"/>
+    </SearchIndex>
+  </Workspace>
+
+ <Versionig rootPth="${rep.ho}/version">
+    <FileSystem classorg.apache.jackrabbit.core.fs.db.DbFileSytem">
+      <param name="daureame" value="jcp/e/jackrabbit"/>
+      <param name="schema" value="postgresql"/>
+      <paam name="schemaObjectPrefx" value="fs__/>
+    </FileSystem>
+
+   <PersistenceManager class="org.apache.jackrabbit.core.persistence.pool.PostgreSQLPersistenceManager">
+      <param name="drier" vatraame" value="j:o/e/jackrabbitord"/>
+      <param name="schema" value="postgresql"/>
+      <param name="schemaObjectPrefix" value="pm_ver_"/>
+    </PersistenceManager>
+  </Versining>
+
+  <Cluste i="node1">
+    <Jounal class="org.apache.jackrabbt.core.journal.DatabaseJournal">
+      <param name="driaore  ame" value="j:o/e/jackrabbit    "/>
+      <param name="schema" value="postgresql"/>
+      <param name="schemaObjectPrefix" value="cl_j_"/>
+      <param name="revision" value="${rep.home}/revision.log"/>
+    </Journal>
+  </Cluster>
+</Repository>
