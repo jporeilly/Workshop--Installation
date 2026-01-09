@@ -36,22 +36,30 @@ services:
       LICENSE_URL: ${LICENSE_URL}
       KETTLE_HOME: ${PENTAHO_HOME}
       PENTAHO_HOME: /home/pentaho/
+      PENTAHO_VERSION: ${PENTAHO_VERSION}
 
 
     depends_on:
-      - repository
+      repository:
+        condition: service_healthy
 
   repository:
-    #user: "1000:50"
     image: ${DOCKER_DATABASE_IMAGE}
-    #ports:
-    #  - "7777:3306"
+    hostname: repository
+    ports:
+      - "3306:3306"
     entrypoint: ["/entrypoint.sh", "--log-error=/var/log/mysqld.log", "--bind-address=0.0.0.0"]
     environment:
       - MYSQL_ROOT_PASSWORD=password
     volumes:
       - "./db_init_mysql/:/docker-entrypoint-initdb.d/"
       - repository-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-ppassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   repository-data:
