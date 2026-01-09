@@ -1,0 +1,51 @@
+# Kubernetes Job to run a Pentaho job once
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kitchen-job  # Choose a unique job name
+  namespace: pdi  # Must match the namespace above
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: kitchen-job
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: kitchen
+          image: pentahopdia.azurecr.io/pdi:11.0.0.0-xxx  # Replace with your image
+          imagePullPolicy: Always
+          resources:
+            limits:
+              memory: "4500Mi"
+            requests:
+              memory: "2000Mi"
+          volumeMounts:
+            - name: azure-file-share
+              mountPath: /docker-entrypoint-init/
+              subPath: kitchen/softwareOverride
+              readOnly: false
+            - name: azure-file-share
+              mountPath: /opt/pentaho/solution/
+              subPath: kitchen/solutionFiles
+              readOnly: false
+            - name: azure-file-share
+              mountPath: /home/pentaho
+              subPath: kitchen/config
+              readOnly: false
+            - name: azure-file-share
+              mountPath: /opt/pentaho/data-integration/logs
+              subPath: kitchen/logs
+              readOnly: false
+          args:
+            - "/opt/pentaho/data-integration/kitchen.sh"
+            - "-file=/opt/pentaho/data-integration/samples/jobs/arguments/Set arguments on a transformation.kjb"  # Replace with your specific .kjb file
+          env:
+            - name: LICENSE_URL
+              value: "https://flex1826-uat.compliance.flexnetoperations.com/instances/QP5BXJRC2XVM/request"  # Replace with your actual license URL
+      volumes:
+        - name: azure-file-share
+          persistentVolumeClaim:
+            claimName: pdia-pv-pdi  # Must match the PVC name
+            readOnly: false

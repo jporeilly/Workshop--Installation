@@ -1,0 +1,71 @@
+# Namespace for grouping resources
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pdi  # Replace (optional) with your desired namespace name
+
+---
+
+# Persistent Volume definition backed by Azure File Share
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  annotations:
+    pv.kubernetes.io/provisioned-by: file.csi.azure.com
+  name: pdia-pv-pdi  # Replace (optional) with a unique PersistentVolume name
+spec:
+  capacity:
+    storage: 10Gi  # Modify storage size if needed
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: azurefile-csi
+  csi:
+    driver: file.csi.azure.com
+    volumeHandle: pdia-docker-file-share-pdi  # Replace with your Azure File Share name
+    volumeAttributes:
+      shareName: pdia-docker-file-share-pdi  # Replace with your Azure File Share name
+    nodeStageSecretRef:
+      name: pdia-fileshareaccount-secret-pdi  # Replace with your Secret name, Must match with the Secret name below
+      namespace: pdi  # Must match the namespace defined above
+  mountOptions:
+    - dir_mode=0777
+    - file_mode=0777
+    - uid=0
+    - gid=0
+    - mfsymlinks
+    - cache=strict
+    - nosharesock
+    - nobrl
+
+---
+
+# Secret for Azure Storage Account credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pdia-fileshareaccount-secret-pdi  # Match the name used in PV
+  namespace: pdi  # Must match the namespace
+type: Opaque
+stringData:
+  azurestorageaccountname: pdiadockerstorage  # Replace with your Azure Storage Account name
+  azurestorageaccountkey: SJp+vN/MhoP5xfCXtg9y7ujTIfUBrO/jXBt7TzTZryZ8BDFZbKpY3XskvbVEbuqdwaAhWv8XmLI4+AStSFB0AA==  # Replace with your Storage Account key
+
+---
+
+# PVC to claim the above Persistent Volume
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pdia-pv-pdi  # Must match the PV name
+  namespace: pdi  # Must match the namespace
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: azurefile-csi
+  volumeName: pdia-pv-pdi  # Must match the PV name
+  resources:
+    requests:
+      storage: 10Gi  # Match the PV storage size
+
+---

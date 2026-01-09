@@ -1,8 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<settings>
-  <!--
-    Pentaho Hibernate configuration for PostgreSQL
-    Updated for Pentaho 11 with PostgreSQL 17
-  -->
-  <config-file>system/hibernate/postgresql.hibernate.cfg.xml</config-file>
-</settings>

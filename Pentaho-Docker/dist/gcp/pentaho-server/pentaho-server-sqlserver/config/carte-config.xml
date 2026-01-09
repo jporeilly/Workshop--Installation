@@ -1,0 +1,13 @@
+<slave_config>
+    <slaveserver>
+        <name>carte-server</name>
+        <network_interface>eth0</network_interface>
+        <port>8080</port>
+		<username>cluster</username>
+        <password>cluster</password>
+        <master>N</master>
+    </slaveserver>
+    <max_log_lines>1000000</max_log_lines>
+    <max_log_timeout_minutes>30</max_log_timeout_minutes>
+    <object_timeout_minutes>30</object_timeout_minutes>
+</slave_config>

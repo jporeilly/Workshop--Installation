@@ -1,0 +1,1 @@
+# pdia-image-configurator

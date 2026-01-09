@@ -1,0 +1,72 @@
+# LoadBalancer service to expose the application
+apiVersion: v1
+kind: Service
+metadata:
+  name: carte-service  # Replace (optional) with your service name
+  namespace: pdi  # Must match the namespace
+  labels:
+    app: carte-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: pdi  # Must match the label in the deployment
+  ports:
+    - port: 8081
+      targetPort: 8080
+
+---
+
+# Deployment for running the Carte server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carte-server  
+  namespace: pdi  # Must match the namespace
+spec:
+  replicas: 1  # Modify if you need multiple pods
+  selector:
+    matchLabels:
+      app: pdi
+  template:
+    metadata:
+      labels:
+        app: pdi
+    spec:
+      containers:
+        - name: carte
+          image: pentahopdia.azurecr.io/pdi:11.0.0.0-xxx  # Replace with your image
+          imagePullPolicy: "Always"
+          resources:
+            limits:
+              memory: "4500Mi"
+            requests:
+              memory: "2000Mi"
+          ports:
+            - containerPort: 8081
+          volumeMounts:
+            - name: azure-file-share
+              mountPath: /docker-entrypoint-init/
+              subPath: carte/softwareOverride
+              readOnly: false
+            - name: azure-file-share
+              mountPath: /opt/pentaho/solution/
+              subPath: carte/solutionFiles
+              readOnly: false
+            - name: azure-file-share
+              mountPath: /home/pentaho
+              subPath: carte/config
+              readOnly: false
+            - name: azure-file-share
+              mountPath: /opt/pentaho/data-integration/logs
+              subPath: carte/logs
+              readOnly: false
+          args: ["/opt/pentaho/data-integration/carte.sh", "/home/pentaho/carte-config.xml"]
+          env:
+            - name: LICENSE_URL
+              value: "https://flex1826-uat.compliance.flexnetoperations.com/instances/QP5BXJRC2XVM/request"  # Replace with your license URL
+      volumes:
+        - name: azure-file-share
+          persistentVolumeClaim:
+            claimName: pdia-pv-pdi  # Must match the PVC name
+            readOnly: false
+  
