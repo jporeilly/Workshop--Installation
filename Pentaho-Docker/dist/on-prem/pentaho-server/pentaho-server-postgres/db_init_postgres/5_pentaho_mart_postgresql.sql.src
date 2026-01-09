@@ -1,9 +1,9 @@
 --
 -- These queries create logging datamart tables for a PostGreSQL database
+-- Note: This file is called by 5_pentaho_mart_postgresql.sh
 --
-\connect hibernate hibuser
 
-CREATE SCHEMA pentaho_operations_mart;
+CREATE SCHEMA IF NOT EXISTS pentaho_operations_mart;
 
 --
 -- SHARED between BA & DI Data Mart - pentaho_operations_mart.DIM_DATE

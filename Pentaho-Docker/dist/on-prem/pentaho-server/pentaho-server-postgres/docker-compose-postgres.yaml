@@ -1,14 +1,16 @@
 services:
   pentaho-server:
+    container_name: pentaho-server
     image: ${PENTAHO_IMAGE_NAME}:${PENTAHO_VERSION}
     platform: linux/amd64    
     build:
       args:
         PENTAHO_VERSION: ${PENTAHO_VERSION}
     hostname: pentaho-server-postgres
+    restart: unless-stopped
     ports:
       - "${PORT}:8080"
-    stop_grace_period: "0s"
+    stop_grace_period: "30s"
     deploy:
       resources:
         limits:
@@ -36,21 +38,40 @@ services:
       LICENSE_URL: ${LICENSE_URL}
       KETTLE_HOME: ${PENTAHO_HOME}
       PENTAHO_HOME: /home/pentaho/
-
-
+      JCR_DB_USER: ${JCR_DB_USER}
+      JCR_DB_PASSWORD: ${JCR_DB_PASSWORD}
+      QUARTZ_DB_USER: ${QUARTZ_DB_USER}
+      QUARTZ_DB_PASSWORD: ${QUARTZ_DB_PASSWORD}
+      HIBERNATE_DB_USER: ${HIBERNATE_DB_USER}
+      HIBERNATE_DB_PASSWORD: ${HIBERNATE_DB_PASSWORD}
     depends_on:
-      - repository
+      repository:
+        condition: service_healthy
 
   repository:
-    #user: "1000:50"
+    container_name: pentaho-postgres
     image: postgres:${DATABASE_VERSION}
-    #ports:
-    #  - "7777:5432"
+    restart: unless-stopped
+    ports:
+      - "${DATABASE_PORT}:5432"
     environment:
-      - POSTGRES_PASSWORD=password
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - JCR_DB_USER=${JCR_DB_USER}
+      - JCR_DB_PASSWORD=${JCR_DB_PASSWORD}
+      - QUARTZ_DB_USER=${QUARTZ_DB_USER}
+      - QUARTZ_DB_PASSWORD=${QUARTZ_DB_PASSWORD}
+      - HIBERNATE_DB_USER=${HIBERNATE_DB_USER}
+      - HIBERNATE_DB_PASSWORD=${HIBERNATE_DB_PASSWORD}
     volumes:
       - "./db_init_postgres/:/docker-entrypoint-initdb.d/"
       - repository-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   repository-data:
