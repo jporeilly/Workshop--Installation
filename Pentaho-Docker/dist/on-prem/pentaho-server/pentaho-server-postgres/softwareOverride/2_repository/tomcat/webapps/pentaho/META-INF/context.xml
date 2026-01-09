@@ -23,37 +23,37 @@ explicitly covering such access.
 <Context path="/pentaho" docbase="webapps/pentaho/">
   <Resource name="jdbc/Hibernate" auth="Container" type="javax.sql.DataSource"
             factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory" maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
-            maxWait="10000" username="${HIBERNATE_DB_USER}" password="${HIBERNATE_DB_PASSWORD}"
+            maxWait="10000" username="hibuser" password="password"
             driverClassName="org.postgresql.Driver" url="jdbc:postgresql://repository:5432/hibernate"
             validationQuery="select 1" jdbcInterceptors="ConnectionState" defaultAutoCommit="true"/>
 
   <Resource name="jdbc/Audit" auth="Container" type="javax.sql.DataSource"
             factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory" maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
-            maxWait="10000" username="${HIBERNATE_DB_USER}" password="${HIBERNATE_DB_PASSWORD}"
+            maxWait="10000" username="hibuser" password="password"
             driverClassName="org.postgresql.Driver" url="jdbc:postgresql://repository:5432/hibernate"
             validationQuery="select 1" />
 
   <Resource name="jdbc/Quartz" auth="Container" type="javax.sql.DataSource"
             factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory" maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
-            maxWait="10000" username="${QUARTZ_DB_USER}" password="${QUARTZ_DB_PASSWORD}" testOnBorrow="true"
+            maxWait="10000" username="pentaho_user" password="password" testOnBorrow="true"
             driverClassName="org.postgresql.Driver" url="jdbc:postgresql://repository:5432/quartz"
             validationQuery="select 1"/>
 
   <Resource name="jdbc/PDI_Operations_Mart" auth="Container" type="javax.sql.DataSource"
             factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory" maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
-            maxWait="10000" username="${HIBERNATE_DB_USER}" password="${HIBERNATE_DB_PASSWORD}"
+            maxWait="10000" username="hibuser" password="password"
             driverClassName="org.postgresql.Driver" url="jdbc:postgresql://repository:5432/hibernate"
             validationQuery="select 1"/>
 
   <Resource name="jdbc/pentaho_operations_mart" auth="Container" type="javax.sql.DataSource"
             factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory" maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
-            maxWait="10000" username="${HIBERNATE_DB_USER}" password="${HIBERNATE_DB_PASSWORD}"
+            maxWait="10000" username="hibuser" password="password"
             driverClassName="org.postgresql.Driver" url="jdbc:postgresql://repository:5432/hibernate"
             validationQuery="select 1"/>
 
  <Resource name="jdbc/live_logging_info" auth="Container" type="javax.sql.DataSource"
             factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory" maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
-            maxWait="10000" username="${HIBERNATE_DB_USER}" password="${HIBERNATE_DB_PASSWORD}"
+            maxWait="10000" username="hibuser" password="password"
             driverClassName="org.postgresql.Driver" url="jdbc:postgresql://repository:5432/hibernate?searchpath=pentaho_dilogs"
             validationQuery="select 1"/>
 
@@ -72,7 +72,7 @@ explicitly covering such access.
   <Resource name="jdbc/jackrabbit" auth="Container" type="javax.sql.DataSource"
             factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory" maxActive="20" minIdle="0"
             maxIdle="5" initialSize="0"
-            maxWait="10000" username="${JCR_DB_USER}" password="${JCR_DB_PASSWORD}"
+            maxWait="10000" username="jcr_user" password="password"
             driverClassName="org.postgresql.Driver"
             url="jdbc:postgresql://repository:5432/jackrabbit"
             validationQuery="select 1"/>

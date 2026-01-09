@@ -9,6 +9,5 @@ target
 bin
 .DS_Store
 routes.yml
-assemblies/**/stagedArtifacts/*
-!assemblies/**/stagedArtifacts/README.md
+assemblies/**/stagedArtifacts
 
