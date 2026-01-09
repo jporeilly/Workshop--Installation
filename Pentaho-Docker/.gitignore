@@ -5,8 +5,6 @@ build
 target
 *.iml
 .idea
-bin
 .DS_Store
 routes.yml
-
 
