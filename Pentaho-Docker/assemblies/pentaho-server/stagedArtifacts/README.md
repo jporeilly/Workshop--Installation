@@ -1,8 +1,13 @@
-Here you need to copy the pentaho distribution software ZIP files
+# Staged Artifacts
 
-examples
-- pentaho-server-ee-11.0.0.0-xxx.zip
-- paz-plugin-ee-11.0.0.0-xxx.zip
-- pir-plugin-ee-11.0.0.0-xxx.zip
-- pdd-plugin-ee-11.0.0.0-xxx.zip
+Copy Pentaho distribution ZIP files here for offline Docker builds.
 
+## Required
+
+- pentaho-server-ee-11.0.0.0-237.zip
+
+## Optional Plugins
+
+- paz-plugin-ee-11.0.0.0-237.zip
+- pir-plugin-ee-11.0.0.0-237.zip
+- pdd-plugin-ee-11.0.0.0-237.zip

@@ -4,8 +4,10 @@ ARG INSTALLATION_PATH=/opt/pentaho
 ARG PENTAHO_VERSION
 ARG PENTAHO_SERVER_PATH=${INSTALLATION_PATH}/pentaho-server
 
-ARG UNPACK_BUILD_IMAGE=one.hitachivantara.com/docker/debian:trixie-slim
-ARG PACK_BUILD_IMAGE=one.hitachivantara.com/docker/debian:trixie-slim
+# Single base image for offline deployment - includes OpenJDK 21
+ARG BASE_IMAGE=eclipse-temurin:21-jre
+ARG UNPACK_BUILD_IMAGE=${BASE_IMAGE}
+ARG PACK_BUILD_IMAGE=${BASE_IMAGE}
 
 FROM ${UNPACK_BUILD_IMAGE} AS install_unpack
 
@@ -21,7 +23,7 @@ ARG PENTAHO_SERVER_PATH
 ARG INSTALLER_PATH=/opt/pentaho-installer
 ## Arguments for regular Pentaho Server install
 ARG PENTAHO_INSTALLER_NAME=pentaho-server-ee
-ARG PENTAHO_VERSION=11.0.0.0-xxx
+ARG PENTAHO_VERSION=11.0.0.0-237
 ARG IS_DEMO=0
 
 ARG FILE_SOFTWARE=${PENTAHO_INSTALLER_NAME}-${PENTAHO_VERSION}.zip
@@ -114,10 +116,7 @@ RUN apt-get update -y \
     && apt-get autoremove -y \
     && apt-get clean
 
-# Install Java OpenJDK 21
-RUN apt-get update && \
-    apt-get install -y openjdk-21-jre-headless && \
-    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives
+# Java OpenJDK 21 is pre-installed in eclipse-temurin:21-jre base image
 
 #Default to Windows host, please override for other cases
 #ENV DISPLAY=host.docker.internal:0
@@ -132,6 +131,7 @@ COPY --from=install_unpack --chown=${PENTAHO_USER}:${PENTAHO_USER} ${INSTALLATIO
 #COPY --chown=${PENTAHO_USER}:${PENTAHO_USER} ./entrypoint/ /
 #Copy the entrypoint script to the root folder
 COPY ./entrypoint/ /
+RUN chmod +x /docker-entrypoint.sh
 
 #Use pentaho-server installation dir as WORKDIR
 WORKDIR ${PENTAHO_SERVER_PATH}
@@ -147,4 +147,5 @@ USER ${PENTAHO_USER}
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
-CMD ["./start-pentaho.sh"]
+# Run Tomcat in foreground mode to keep container alive
+CMD ["./tomcat/bin/catalina.sh", "run"]
