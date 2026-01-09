@@ -128,6 +128,9 @@ ENV SKIP_WEBKITGTK_CHECK=1
 # Use installed software from installation base and assign non-elevated-privileges user in destination path
 COPY --from=install_unpack --chown=${PENTAHO_USER}:${PENTAHO_USER} ${INSTALLATION_PATH}/ ${INSTALLATION_PATH}/
 
+# Change Tomcat port from 8080 to 8090
+RUN sed -i 's/port="8080"/port="8090"/g' ${PENTAHO_SERVER_PATH}/tomcat/conf/server.xml
+
 #COPY --chown=${PENTAHO_USER}:${PENTAHO_USER} ./entrypoint/ /
 #Copy the entrypoint script to the root folder
 COPY ./entrypoint/ /
@@ -138,8 +141,8 @@ WORKDIR ${PENTAHO_SERVER_PATH}
 
 #Setup JVM level parameters/variables
 ENV PENTAHO_DI_JAVA_OPTIONS="-Dfile.encoding=utf8 "
-#Expose 8080 to use with pentaho server
-EXPOSE 8080
+#Expose 8090 to use with pentaho server
+EXPOSE 8090
 EXPOSE 8443
 
 #Use pentaho user
