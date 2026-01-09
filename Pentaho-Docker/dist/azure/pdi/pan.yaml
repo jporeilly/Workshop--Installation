@@ -1,0 +1,51 @@
+# Kubernetes Job to run a Pentaho job once
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pan-job  # Choose a unique job name
+  namespace: pdi  # Must match the namespace above
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: pan-job
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pan
+          image: pentahopdia.azurecr.io/pdi:11.0.0.0-xxx  # Replace with your image if needed
+          imagePullPolicy: Always
+          resources:
+            limits:
+              memory: "4500Mi"
+            requests:
+              memory: "2000Mi"
+          volumeMounts:
+            - name: azure-file-share
+              mountPath: /docker-entrypoint-init/
+              subPath: pan/softwareOverride
+              readOnly: false
+            - name: azure-file-share
+              mountPath: /opt/pentaho/solution/
+              subPath: pan/solutionFiles
+              readOnly: false
+            - name: azure-file-share
+              mountPath: /home/pentaho
+              subPath: pan/config
+              readOnly: false
+            - name: azure-file-share
+              mountPath: /opt/pentaho/data-integration/logs
+              subPath: pan/logs
+              readOnly: false
+          args:
+            - "/opt/pentaho/data-integration/pan.sh"
+            - "-file=/opt/pentaho/data-integration/samples/transformations/Rounding.ktr"  # Replace with your specific .kjb file
+          env:
+            - name: LICENSE_URL
+              value: "https://flex1826-uat.compliance.flexnetoperations.com/instances/QP5BXJRC2XVM/request"  # Replace with your actual license URL
+      volumes:
+        - name: azure-file-share
+          persistentVolumeClaim:
+            claimName: pdia-pv-pdi  # Must match the PVC name
+            readOnly: false

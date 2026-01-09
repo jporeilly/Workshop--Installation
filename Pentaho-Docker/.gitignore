@@ -1,0 +1,13 @@
+.project
+.classpath
+.settings
+build
+.log
+target
+*.iml
+.idea
+bin
+.DS_Store
+routes.yml
+assemblies/**/stagedArtifacts
+

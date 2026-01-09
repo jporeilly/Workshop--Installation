@@ -1,0 +1,194 @@
+run-name: Building ${{ inputs.pentaho-version }}
+name: Artifacts
+
+on:
+  
+  workflow_dispatch:
+    inputs:
+      pentaho-version:
+        description: 'Version to be set'
+        required: true
+        default: '11.0.0.0-16'
+      environment:
+        type: choice
+        description: 'Environment of this build'
+        required: false
+        default: 'QAT'
+        options:
+          - 'QAT'
+          - 'RELEASE'
+          - 'DEV'
+      generic-repository:
+        description: 'Generic Repository to upload artifacts'
+        required: false
+        default: 'pntprv-generic-dev'
+      docker-repository:
+        description: 'Docker Repository to upload images'
+        required: false
+        default: 'pntprv-docker-dev'
+
+env:
+  ARTIFACTORY_USER: "${{ secrets.PENTAHO_CICD_ONE_USER }}"
+  ARTIFACTORY_API_KEY: "${{ secrets.PENTAHO_CICD_ONE_KEY }}"
+  ARTIFACTORY_HOST: "https://${{ vars.ARTIFACTORY_HOST }}"
+
+  REGISTRY_PROXY_URL: "https://${{ vars.ARTIFACTORY_HOST }}/artifactory/pnt-mvn"
+
+  ARTIFACTORY_GENERIC_REPO: "https://${{ vars.ARTIFACTORY_HOST }}/artifactory/${{ inputs.generic-repository }}"
+
+  RT_REMOTE_PATH: "${{ github.repository }}/${{ inputs.pentaho-version }}"
+
+  IMAGE_ZIP_FILE_NAME: "${{ github.event.repository.name }}-${{ inputs.pentaho-version }}"
+
+jobs:
+  set-ref-version:
+    runs-on: k8s
+    name: "Setting ${{ inputs.pentaho-version }} as reference version"
+
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+
+      - name: "Setting version"
+        run: |
+          echo "${{ inputs.pentaho-version }}" > ./.github/ref-version || echo "Couldn't write the current version to local file!"
+
+      - name: "Commit changes to reference version file"
+        id: add-commit
+        continue-on-error: true
+        uses: EndBug/add-and-commit@v9
+        with:
+          add: ./.github/ref-version
+          commit: --signoff
+          default_author: github_actions
+          message: "[CLEANUP] - :robot: Updated reference version to ${{ inputs.pentaho-version }}"
+          pull: '--rebase --autostash'
+
+  docker-builds:
+    needs: set-ref-version
+    runs-on: k8s
+    name: "Build ${{ matrix.products.name }} Docker image"
+    strategy:
+      matrix:
+        products: [
+          {
+            name: "pdi",
+            zip_to_download: "pdi-ee-client",
+            rt_path: "com/pentaho/di/pdi-ee-client"
+          },
+          {
+            name: "pentaho-server",
+            zip_to_download: "pentaho-server-ee",
+            rt_path: "pentaho/pentaho-server-ee"
+          }
+        ]
+
+    env:
+      IMAGE_NAME_TAG: "${{ vars.ARTIFACTORY_HOST }}/${{ inputs.docker-repository }}/${{ github.repository }}/${{ matrix.products.name }}:${{ inputs.pentaho-version }}"
+      IMAGE_TEMP_FILE: "$RUNNER_TEMP/$IMAGE_ZIP_FILE_NAME"
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare staging area
+        working-directory: "./assemblies/${{ matrix.products.name }}"
+        run: |
+          mkdir -p ./stagedArtifacts
+
+          curl -Lg \
+            -H "Authorization: Bearer ${{ secrets.JF_ACCESS_TOKEN }}" \
+            -X GET ${{ env.REGISTRY_PROXY_URL }}/${{ matrix.products.rt_path }}/${{ inputs.pentaho-version }}/${{ matrix.products.zip_to_download }}-${{ inputs.pentaho-version }}.zip \
+            -o ./stagedArtifacts/${{ matrix.products.zip_to_download }}-${{ inputs.pentaho-version }}.zip
+
+      - name: Docker login
+        run: |
+          echo "${{ env.ARTIFACTORY_API_KEY }}"  | docker login  ${{ env.ARTIFACTORY_HOST}} --username "${{ env.ARTIFACTORY_USER }}" --password-stdin
+
+      - name: Build and Push Docker image
+        working-directory: "./assemblies/${{ matrix.products.name }}"
+        run: |
+          docker build --build-arg PENTAHO_VERSION=${{ inputs.pentaho-version }} \
+            -f ./Dockerfile \
+            -t ${{ env.IMAGE_NAME_TAG }} .
+          
+          docker push ${{ env.IMAGE_NAME_TAG }}
+          echo ":frog: ${{ env.IMAGE_NAME_TAG }} pushed!" >> $GITHUB_STEP_SUMMARY
+
+      - name: Save and Upload Docker image
+        run: |
+          docker save ${{ env.IMAGE_NAME_TAG }} | gzip > ${{ env.IMAGE_TEMP_FILE }}.tar.gz
+          
+          file ${{ env.IMAGE_TEMP_FILE }}.tar.gz
+          
+          # Upload to Generic
+          curl -H "Authorization: Bearer ${{ env.ARTIFACTORY_API_KEY }}" \
+            -T ${{ env.IMAGE_TEMP_FILE }}.tar.gz \
+            "${{ env.ARTIFACTORY_GENERIC_REPO }}/${{ env.RT_REMOTE_PATH }}/images/${{ matrix.products.name }}-${{ inputs.pentaho-version }}.tar.gz"
+          
+          echo ":frog: ${{ env.ARTIFACTORY_GENERIC_REPO }}/${{ env.RT_REMOTE_PATH }}/images/${{ matrix.products.name }}-${{ inputs.pentaho-version }}.tar.gz uploaded!" >> $GITHUB_STEP_SUMMARY
+
+      - name: Trigger Threatrix Docker Scans
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: threatrix-docker-scan-single.yaml
+          repo: pentaho/pdia-security
+          ref: main
+          token: ${{ secrets.HV_ACTIONS_GIT_TOKEN }}
+          inputs: >
+            {
+              "threatrix_tags": "${{ github.ref_name }}",
+              "threatrix_branch": "${{ github.ref_name }}",
+              "threatrix_app_name": "${{ github.event.repository.name }}-${{ matrix.products.name }}",
+              "threatrix_eid": "${{ vars.THREATRIX_PDIA_EID }}",
+              "threatrix_scpid": "${{ vars.THREATRIX_PDIA_SCP_ID }}",
+              "docker_image": "${{ vars.ARTIFACTORY_HOST }}/${{ inputs.docker-repository }}/${{ github.repository }}/${{ matrix.products.name }}",
+              "docker_tag": "${{ inputs.pentaho-version }}",
+              "product_name": "pdia"
+            }
+
+  dists:
+    needs: set-ref-version
+    runs-on: k8s
+
+    name: "Assembling ${{ matrix.dist }} dist"
+    strategy:
+      matrix:
+        dist: ["aws","azure","gcp","on-prem"]
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Assembling
+        run: |
+          zip -r $RUNNER_TEMP/${{ matrix.dist }}-${{ inputs.pentaho-version }}.zip ./dist/${{ matrix.dist }}/
+          
+          # Upload to Generic
+          curl -H "Authorization: Bearer ${{ env.ARTIFACTORY_API_KEY }}" \
+            -T $RUNNER_TEMP/${{ matrix.dist }}-${{ inputs.pentaho-version }}.zip \
+            "${{ env.ARTIFACTORY_GENERIC_REPO }}/${{ env.RT_REMOTE_PATH }}/dists/${{ matrix.dist }}-${{ inputs.pentaho-version }}.zip"
+
+          echo ":frog: ${{ env.ARTIFACTORY_GENERIC_REPO }}/${{ env.RT_REMOTE_PATH }}/dists/${{ matrix.dist }}-${{ inputs.pentaho-version }}.zip uploaded!" >> $GITHUB_STEP_SUMMARY
+
+  compliance-scans:
+    needs: [set-ref-version, docker-builds]
+    runs-on: k8s
+    name: "Compliance Scans"
+    steps:
+      - name: Trigger Compliance Scans
+        if: '!cancelled() && success()'
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: compliance-pdia.yaml
+          repo: pentaho/pdia-security
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.HV_ACTIONS_GIT_TOKEN }}
+          inputs: >
+            {
+              "artifact_version": "${{ inputs.pentaho-version }}",
+              "environment": "${{ inputs.environment }}"
+            }
+
