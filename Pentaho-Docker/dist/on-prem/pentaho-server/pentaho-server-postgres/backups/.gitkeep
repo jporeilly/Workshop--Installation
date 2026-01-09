@@ -1,0 +1,2 @@
+# This folder stores PostgreSQL database backups
+# Use: docker exec pentaho-postgres pg_dumpall -U postgres > backups/backup_$(date +%Y%m%d).sql

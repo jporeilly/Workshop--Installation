@@ -16,6 +16,13 @@ services:
         limits:
           cpus: '3'
           memory: 5g
+    networks:
+      - pentaho-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     volumes:
       #SOFTWARE_OVERRIDE_FOLDER is a folder that contains the software "changes" that will be copied to the container
       - "${SOFTWARE_OVERRIDE_FOLDER}/:/docker-entrypoint-init"
@@ -54,6 +61,13 @@ services:
     restart: unless-stopped
     ports:
       - "${DATABASE_PORT}:5432"
+    networks:
+      - pentaho-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -66,12 +80,18 @@ services:
     volumes:
       - "./db_init_postgres/:/docker-entrypoint-initdb.d/"
       - repository-data:/var/lib/postgresql/data
+      - "./backups:/backups"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+
+networks:
+  pentaho-network:
+    driver: bridge
+    name: pentaho-network
 
 volumes:
   repository-data:

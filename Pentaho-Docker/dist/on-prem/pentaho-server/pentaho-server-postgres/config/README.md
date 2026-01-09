@@ -124,41 +124,83 @@ Host: repository
 Port: 5432
 ```
 
-## Common Commands
+## Helper Scripts
 
-### Start Services
+### Using Makefile (Recommended)
 
 ```bash
+make help           # Show all available commands
+make build          # Build Pentaho Docker image
+make up             # Start all services
+make down           # Stop all services
+make logs           # View all logs
+make backup         # Backup databases
+make restore        # Restore from backup
+make status         # Check service health
+```
+
+### Using Bash Script
+
+```bash
+# Make script executable (first time only)
+chmod +x scripts/pentaho.sh
+
+./scripts/pentaho.sh help           # Show all commands
+./scripts/pentaho.sh build          # Build Pentaho Docker image
+./scripts/pentaho.sh up             # Start all services
+./scripts/pentaho.sh down           # Stop all services
+./scripts/pentaho.sh logs           # View all logs
+./scripts/pentaho.sh backup         # Backup databases
+./scripts/pentaho.sh restore        # Restore from backup
+./scripts/pentaho.sh status         # Check service health
+```
+
+### Manual Docker Commands
+
+```bash
+# Start services
 docker-compose -f docker-compose-postgres.yaml up -d
-```
 
-### Stop Services
-
-```bash
+# Stop services
 docker-compose -f docker-compose-postgres.yaml down
-```
 
-### View Logs
-
-```bash
-# Pentaho Server logs
+# View logs
 docker-compose -f docker-compose-postgres.yaml logs -f pentaho-server
 
-# PostgreSQL logs
-docker-compose -f docker-compose-postgres.yaml logs -f repository
-```
-
-### Restart Pentaho Server
-
-```bash
+# Restart Pentaho Server
 docker-compose -f docker-compose-postgres.yaml restart pentaho-server
-```
 
-### Reset Database (WARNING: Deletes all data)
-
-```bash
+# Reset database (WARNING: Deletes all data)
 docker-compose -f docker-compose-postgres.yaml down -v
 docker-compose -f docker-compose-postgres.yaml up -d
+```
+
+## Database Backup & Restore
+
+### Create Backup
+
+```bash
+# Using Makefile
+make backup
+
+# Using script
+./scripts/pentaho.sh backup
+
+# Manual
+docker exec pentaho-postgres pg_dumpall -U postgres > backups/backup_$(date +%Y%m%d).sql
+```
+
+### Restore Backup
+
+```bash
+# Using Makefile
+make restore
+
+# Using script
+./scripts/pentaho.sh restore
+
+# Manual
+cat backups/backup.sql | docker exec -i pentaho-postgres psql -U postgres
 ```
 
 ## Accessing the Server
