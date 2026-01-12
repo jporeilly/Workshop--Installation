@@ -1,0 +1,72 @@
+# Environment Configuration
+.env
+.env.local
+.env.*.local
+
+# Pentaho Server ZIP (user must provide)
+docker/stagedArtifacts/*.zip
+docker/stagedArtifacts/*.tar
+docker/stagedArtifacts/*.tar.gz
+
+# Logs
+*.log
+logs/
+*.out
+
+# Backup files
+backups/
+*.sql.backup
+*-backup-*.sql
+*.sql.gz
+*.dump
+*.dmp
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Docker volumes data (if using bind mounts)
+mysql-data/
+pentaho-data/
+
+# User configuration (may contain sensitive data)
+config/.kettle/**
+!config/.kettle/.gitkeep
+config/.pentaho/**
+!config/.pentaho/.gitkeep
+
+# Build artifacts
+*.class
+*.jar
+*.war
+*.ear
+target/
+dist/
+
+# Node modules (if any)
+node_modules/
+
+# Python bytecode (if any)
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Pentaho-specific
+pentaho-solutions/system/logs/
+*.lck
+
+# Docker compose override
+docker-compose.override.yml
+
+# License files (don't commit enterprise licenses)
+*.lic

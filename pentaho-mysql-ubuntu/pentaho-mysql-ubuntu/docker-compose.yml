@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # MySQL Database with Pentaho Repository
+  mysql:
+    image: mysql:8.0
+    container_name: pentaho-mysql
+    hostname: repository
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password}
+      MYSQL_DATABASE: pentaho
+      TZ: America/New_York
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - pentaho_mysql_data:/var/lib/mysql
+      - ./db_init_mysql:/docker-entrypoint-initdb.d:ro
+      - ./mysql-config/custom.cnf:/etc/mysql/conf.d/custom.cnf:ro
+    networks:
+      - pentaho-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Pentaho Server
+  pentaho-server:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+      args:
+        PENTAHO_VERSION: ${PENTAHO_VERSION:-11.0.0.0-237}
+        PENTAHO_INSTALLER_NAME: pentaho-server-ee
+    image: ${PENTAHO_IMAGE_NAME:-pentaho/pentaho-server}:${PENTAHO_IMAGE_TAG:-11.0.0.0-237}
+    container_name: pentaho-server
+    hostname: pentaho-server
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      - PENTAHO_MIN_MEMORY=${PENTAHO_MIN_MEMORY:-2048m}
+      - PENTAHO_MAX_MEMORY=${PENTAHO_MAX_MEMORY:-4096m}
+      - LICENSE_URL=${LICENSE_URL:-}
+      - PENTAHO_SERVER_PATH=${PENTAHO_SERVER_PATH:-/opt/pentaho/pentaho-server}
+      - INSTALLATION_PATH=${INSTALLATION_PATH:-/opt/pentaho}
+    ports:
+      - "${PENTAHO_HTTP_PORT:-8090}:8080"
+      - "${PENTAHO_HTTPS_PORT:-8443}:8443"
+    volumes:
+      # Configuration overrides (processed by entrypoint)
+      - ./softwareOverride:/docker-entrypoint-init:ro
+      # User configuration directories
+      - ./config/.kettle:/home/pentaho/.kettle
+      - ./config/.pentaho:/home/pentaho/.pentaho
+      # Log directory - commented out to avoid permission issues, use docker logs instead
+      # - ./logs:/opt/pentaho/pentaho-server/tomcat/logs
+      # Named volumes for data persistence
+      - pentaho_solutions:/opt/pentaho/pentaho-server/pentaho-solutions
+      - pentaho_data:/opt/pentaho/pentaho-server/data
+    networks:
+      - pentaho-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/pentaho/Login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # Adminer - Database Administration Tool (Optional)
+  adminer:
+    image: adminer:latest
+    container_name: pentaho-adminer
+    hostname: adminer
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      ADMINER_DEFAULT_SERVER: repository
+    ports:
+      - "${ADMINER_PORT:-8050}:8080"
+    networks:
+      - pentaho-net
+
+networks:
+  pentaho-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  pentaho_mysql_data:
+    driver: local
+  pentaho_solutions:
+    driver: local
+  pentaho_data:
+    driver: local
