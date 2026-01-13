@@ -175,7 +175,7 @@ PENTAHO_MIN_MEMORY=2048m
 PENTAHO_MAX_MEMORY=4096m            # Adjust based on available RAM
 
 # License (optional for EE features)
-LICENSE_URL=http://your-server/pentaho-ee-license.lic
+LICENSE_URL=http://licensing-server/request
 ```
 
 ### PostgreSQL Configuration
