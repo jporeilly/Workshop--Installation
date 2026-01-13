@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Microsoft SQL Server with Pentaho Repository
   mssql:
