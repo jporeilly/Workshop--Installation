@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--===========================================================================
+Pentaho Server 11 - Oracle Database Configuration
+JNDI DataSource definitions for Oracle repository
+============================================================================-->
+<Context path="/pentaho" docbase="webapps/pentaho/">
+  <!-- Hibernate Repository DataSource -->
+  <Resource name="jdbc/Hibernate" auth="Container" type="javax.sql.DataSource"
+            factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory"
+            maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
+            maxWait="10000" username="hibuser" password="password"
+            driverClassName="oracle.jdbc.OracleDriver"
+            url="jdbc:oracle:thin:@//repository:1521/FREEPDB1"
+            validationQuery="SELECT 1 FROM DUAL"
+            jdbcInterceptors="ConnectionState"
+            defaultAutoCommit="true"/>
+
+  <!-- Audit DataSource -->
+  <Resource name="jdbc/Audit" auth="Container" type="javax.sql.DataSource"
+            factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory"
+            maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
+            maxWait="10000" username="hibuser" password="password"
+            driverClassName="oracle.jdbc.OracleDriver"
+            url="jdbc:oracle:thin:@//repository:1521/FREEPDB1"
+            validationQuery="SELECT 1 FROM DUAL"/>
+
+  <!-- Quartz Scheduler DataSource -->
+  <Resource name="jdbc/Quartz" auth="Container" type="javax.sql.DataSource"
+            factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory"
+            maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
+            maxWait="10000" username="pentaho_user" password="password"
+            testOnBorrow="true"
+            driverClassName="oracle.jdbc.OracleDriver"
+            url="jdbc:oracle:thin:@//repository:1521/FREEPDB1"
+            validationQuery="SELECT 1 FROM DUAL"/>
+
+  <!-- PDI Operations Mart DataSource -->
+  <Resource name="jdbc/PDI_Operations_Mart" auth="Container" type="javax.sql.DataSource"
+            factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory"
+            maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
+            maxWait="10000" username="hibuser" password="password"
+            driverClassName="oracle.jdbc.OracleDriver"
+            url="jdbc:oracle:thin:@//repository:1521/FREEPDB1"
+            validationQuery="SELECT 1 FROM DUAL"/>
+
+  <!-- Pentaho Operations Mart DataSource -->
+  <Resource name="jdbc/pentaho_operations_mart" auth="Container" type="javax.sql.DataSource"
+            factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory"
+            maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
+            maxWait="10000" username="hibuser" password="password"
+            driverClassName="oracle.jdbc.OracleDriver"
+            url="jdbc:oracle:thin:@//repository:1521/FREEPDB1"
+            validationQuery="SELECT 1 FROM DUAL"/>
+
+  <!-- Live Logging Info DataSource -->
+  <Resource name="jdbc/live_logging_info" auth="Container" type="javax.sql.DataSource"
+            factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory"
+            maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
+            maxWait="10000" username="hibuser" password="password"
+            driverClassName="oracle.jdbc.OracleDriver"
+            url="jdbc:oracle:thin:@//repository:1521/FREEPDB1"
+            validationQuery="SELECT 1 FROM DUAL"/>
+
+  <!-- Sample Data (HSQLDB - unchanged) -->
+  <Resource name="jdbc/SampleData" auth="Container" type="javax.sql.DataSource"
+            factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory"
+            maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
+            maxWait="10000" username="sa" password=""
+            driverClassName="org.hsqldb.jdbcDriver"
+            url="jdbc:hsqldb:hsql://localhost/sampledata"
+            validationQuery="select 1 from INFORMATION_SCHEMA.SYSTEM_USERS"/>
+
+  <!-- Sample Data Admin (HSQLDB - unchanged) -->
+  <Resource name="jdbc/SampleDataAdmin" auth="Container" type="javax.sql.DataSource"
+            factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory"
+            maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
+            maxWait="10000" username="sa" password=""
+            driverClassName="org.hsqldb.jdbcDriver"
+            url="jdbc:hsqldb:hsql://localhost/sampledata"
+            validationQuery="select 1 from INFORMATION_SCHEMA.SYSTEM_USERS"/>
+
+  <!-- Jackrabbit Content Repository DataSource -->
+  <Resource name="jdbc/jackrabbit" auth="Container" type="javax.sql.DataSource"
+            factory="org.pentaho.di.core.database.util.DecryptingDataSourceFactory"
+            maxActive="20" minIdle="0" maxIdle="5" initialSize="0"
+            maxWait="10000" username="jcr_user" password="password"
+            driverClassName="oracle.jdbc.OracleDriver"
+            url="jdbc:oracle:thin:@//repository:1521/FREEPDB1"
+            validationQuery="SELECT 1 FROM DUAL"/>
+</Context>

@@ -1,0 +1,230 @@
+-- =========================================================
+-- Pentaho OLTP Logging Tables Creation - SQL Server
+-- =========================================================
+
+-- Create pentaho_dilogs database
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'pentaho_dilogs')
+BEGIN
+    CREATE DATABASE pentaho_dilogs;
+    PRINT 'Database pentaho_dilogs created successfully';
+END
+ELSE
+BEGIN
+    PRINT 'Database pentaho_dilogs already exists';
+END
+GO
+
+USE pentaho_dilogs;
+GO
+
+-- Grant permissions to hibuser for pentaho_dilogs
+IF NOT EXISTS (SELECT name FROM sys.database_principals WHERE name = 'hibuser')
+BEGIN
+    CREATE USER hibuser FOR LOGIN hibuser;
+    PRINT 'User hibuser created in pentaho_dilogs database';
+END
+GO
+
+ALTER ROLE db_owner ADD MEMBER hibuser;
+GO
+
+-- Job log table
+IF OBJECT_ID('dbo.job_logs', 'U') IS NOT NULL DROP TABLE dbo.job_logs;
+GO
+
+CREATE TABLE dbo.job_logs (
+    ID_JOB INT,
+    CHANNEL_ID VARCHAR(255),
+    JOBNAME VARCHAR(255),
+    STATUS VARCHAR(15),
+    LINES_READ BIGINT,
+    LINES_WRITTEN BIGINT,
+    LINES_UPDATED BIGINT,
+    LINES_INPUT BIGINT,
+    LINES_OUTPUT BIGINT,
+    LINES_REJECTED BIGINT,
+    ERRORS BIGINT,
+    STARTDATE DATETIME,
+    ENDDATE DATETIME,
+    LOGDATE DATETIME,
+    DEPDATE DATETIME,
+    REPLAYDATE DATETIME,
+    LOG_FIELD NVARCHAR(MAX),
+    EXECUTING_SERVER VARCHAR(255),
+    EXECUTING_USER VARCHAR(255),
+    START_JOB_ENTRY VARCHAR(255),
+    CLIENT VARCHAR(255)
+);
+GO
+
+CREATE INDEX IDX_job_logs_1 ON dbo.job_logs(ID_JOB);
+CREATE INDEX IDX_job_logs_2 ON dbo.job_logs(ERRORS, STATUS, JOBNAME);
+GO
+
+-- Job entry log table
+IF OBJECT_ID('dbo.jobentry_logs', 'U') IS NOT NULL DROP TABLE dbo.jobentry_logs;
+GO
+
+CREATE TABLE dbo.jobentry_logs (
+    ID_BATCH INT,
+    CHANNEL_ID VARCHAR(255),
+    LOG_DATE DATETIME,
+    TRANSNAME VARCHAR(255),
+    STEPNAME VARCHAR(255),
+    LINES_READ BIGINT,
+    LINES_WRITTEN BIGINT,
+    LINES_UPDATED BIGINT,
+    LINES_INPUT BIGINT,
+    LINES_OUTPUT BIGINT,
+    LINES_REJECTED BIGINT,
+    ERRORS BIGINT,
+    RESULT CHAR(5),
+    NR_RESULT_ROWS BIGINT,
+    NR_RESULT_FILES BIGINT,
+    LOG_FIELD NVARCHAR(MAX),
+    COPY_NR INT
+);
+GO
+
+CREATE INDEX IDX_jobentry_logs_1 ON dbo.jobentry_logs(ID_BATCH);
+GO
+
+-- Logging channel log table
+IF OBJECT_ID('dbo.channel_logs', 'U') IS NOT NULL DROP TABLE dbo.channel_logs;
+GO
+
+CREATE TABLE dbo.channel_logs (
+    ID_BATCH INT,
+    CHANNEL_ID VARCHAR(255),
+    LOG_DATE DATETIME,
+    LOGGING_OBJECT_TYPE VARCHAR(255),
+    OBJECT_NAME VARCHAR(255),
+    OBJECT_COPY VARCHAR(255),
+    REPOSITORY_DIRECTORY VARCHAR(255),
+    FILENAME VARCHAR(255),
+    OBJECT_ID VARCHAR(255),
+    OBJECT_REVISION VARCHAR(255),
+    PARENT_CHANNEL_ID VARCHAR(255),
+    ROOT_CHANNEL_ID VARCHAR(255)
+);
+GO
+
+-- Checkpoint log table
+IF OBJECT_ID('dbo.checkpoint_logs', 'U') IS NOT NULL DROP TABLE dbo.checkpoint_logs;
+GO
+
+CREATE TABLE dbo.checkpoint_logs (
+    ID_JOB_RUN INT,
+    ID_JOB INT,
+    JOBNAME VARCHAR(255),
+    NAMESPACE VARCHAR(255),
+    CHECKPOINT_NAME VARCHAR(255),
+    CHECKPOINT_COPYNR SMALLINT,
+    ATTEMPT_NR INT,
+    JOB_RUN_START_DATE DATETIME,
+    LOGDATE DATETIME,
+    RESULT_XML NVARCHAR(MAX),
+    PARAMETER_XML NVARCHAR(MAX)
+);
+GO
+
+CREATE INDEX IDX_checkpoint_logs_1 ON dbo.checkpoint_logs(ID_JOB_RUN);
+CREATE INDEX IDX_checkpoint_logs_2 ON dbo.checkpoint_logs(JOBNAME, NAMESPACE);
+GO
+
+-- Transformation log table
+IF OBJECT_ID('dbo.trans_logs', 'U') IS NOT NULL DROP TABLE dbo.trans_logs;
+GO
+
+CREATE TABLE dbo.trans_logs (
+    ID_BATCH INT,
+    CHANNEL_ID VARCHAR(255),
+    TRANSNAME VARCHAR(255),
+    STATUS VARCHAR(15),
+    LINES_READ BIGINT,
+    LINES_WRITTEN BIGINT,
+    LINES_UPDATED BIGINT,
+    LINES_INPUT BIGINT,
+    LINES_OUTPUT BIGINT,
+    LINES_REJECTED BIGINT,
+    ERRORS BIGINT,
+    STARTDATE DATETIME,
+    ENDDATE DATETIME,
+    LOGDATE DATETIME,
+    DEPDATE DATETIME,
+    REPLAYDATE DATETIME,
+    LOG_FIELD NVARCHAR(MAX),
+    EXECUTING_SERVER VARCHAR(255),
+    EXECUTING_USER VARCHAR(255),
+    CLIENT VARCHAR(255)
+);
+GO
+
+CREATE INDEX IDX_trans_logs_1 ON dbo.trans_logs(ID_BATCH);
+CREATE INDEX IDX_trans_logs_2 ON dbo.trans_logs(ERRORS, STATUS, TRANSNAME);
+GO
+
+-- Step log table
+IF OBJECT_ID('dbo.step_logs', 'U') IS NOT NULL DROP TABLE dbo.step_logs;
+GO
+
+CREATE TABLE dbo.step_logs (
+    ID_BATCH INT,
+    CHANNEL_ID VARCHAR(255),
+    LOG_DATE DATETIME,
+    TRANSNAME VARCHAR(255),
+    STEPNAME VARCHAR(255),
+    STEP_COPY SMALLINT,
+    LINES_READ BIGINT,
+    LINES_WRITTEN BIGINT,
+    LINES_UPDATED BIGINT,
+    LINES_INPUT BIGINT,
+    LINES_OUTPUT BIGINT,
+    LINES_REJECTED BIGINT,
+    ERRORS BIGINT,
+    LOG_FIELD NVARCHAR(MAX)
+);
+GO
+
+-- Step performance log table
+IF OBJECT_ID('dbo.transperf_logs', 'U') IS NOT NULL DROP TABLE dbo.transperf_logs;
+GO
+
+CREATE TABLE dbo.transperf_logs (
+    ID_BATCH INT,
+    SEQ_NR INT,
+    LOGDATE DATETIME,
+    TRANSNAME VARCHAR(255),
+    STEPNAME VARCHAR(255),
+    STEP_COPY INT,
+    LINES_READ BIGINT,
+    LINES_WRITTEN BIGINT,
+    LINES_UPDATED BIGINT,
+    LINES_INPUT BIGINT,
+    LINES_OUTPUT BIGINT,
+    LINES_REJECTED BIGINT,
+    ERRORS BIGINT,
+    INPUT_BUFFER_ROWS BIGINT,
+    OUTPUT_BUFFER_ROWS BIGINT
+);
+GO
+
+-- Metrics log table
+IF OBJECT_ID('dbo.metrics_logs', 'U') IS NOT NULL DROP TABLE dbo.metrics_logs;
+GO
+
+CREATE TABLE dbo.metrics_logs (
+    ID_BATCH INT,
+    CHANNEL_ID VARCHAR(255),
+    LOG_DATE DATETIME,
+    METRICS_DATE DATETIME,
+    METRICS_CODE VARCHAR(255),
+    METRICS_DESCRIPTION VARCHAR(255),
+    METRICS_SUBJECT VARCHAR(255),
+    METRICS_TYPE VARCHAR(255),
+    METRICS_VALUE BIGINT
+);
+GO
+
+PRINT 'Pentaho logging tables setup completed';
+GO

@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database with Pentaho Repository
+  postgres:
+    image: postgres:15
+    container_name: pentaho-postgres
+    hostname: repository
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      TZ: America/New_York
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pentaho_postgres_data:/var/lib/postgresql/data
+      - ./db_init_postgres:/docker-entrypoint-initdb.d:ro
+      - ./postgres-config/custom.conf:/etc/postgresql/conf.d/custom.conf:ro
+      - ./postgres-config/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: postgres -c hba_file=/etc/postgresql/pg_hba.conf
+    networks:
+      - pentaho-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Pentaho Server
+  pentaho-server:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+      args:
+        PENTAHO_VERSION: ${PENTAHO_VERSION:-11.0.0.0-237}
+        PENTAHO_INSTALLER_NAME: pentaho-server-ee
+    image: ${PENTAHO_IMAGE_NAME:-pentaho/pentaho-server}:${PENTAHO_IMAGE_TAG:-11.0.0.0-237}
+    container_name: pentaho-server
+    hostname: pentaho-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - PENTAHO_MIN_MEMORY=${PENTAHO_MIN_MEMORY:-2048m}
+      - PENTAHO_MAX_MEMORY=${PENTAHO_MAX_MEMORY:-4096m}
+      - LICENSE_URL=${LICENSE_URL:-}
+      - PENTAHO_SERVER_PATH=${PENTAHO_SERVER_PATH:-/opt/pentaho/pentaho-server}
+      - INSTALLATION_PATH=${INSTALLATION_PATH:-/opt/pentaho}
+    ports:
+      - "${PENTAHO_HTTP_PORT:-8090}:8080"
+      - "${PENTAHO_HTTPS_PORT:-8443}:8443"
+    volumes:
+      # Configuration overrides (processed by entrypoint)
+      - ./softwareOverride:/docker-entrypoint-init:ro
+      # User configuration directories
+      - ./config/.kettle:/home/pentaho/.kettle
+      - ./config/.pentaho:/home/pentaho/.pentaho
+      # Log directory - commented out to avoid permission issues, use docker logs instead
+      # - ./logs:/opt/pentaho/pentaho-server/tomcat/logs
+      # Named volumes for data persistence
+      - pentaho_solutions:/opt/pentaho/pentaho-server/pentaho-solutions
+      - pentaho_data:/opt/pentaho/pentaho-server/data
+    networks:
+      - pentaho-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/pentaho/Login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+networks:
+  pentaho-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  pentaho_postgres_data:
+    driver: local
+  pentaho_solutions:
+    driver: local
+  pentaho_data:
+    driver: local
