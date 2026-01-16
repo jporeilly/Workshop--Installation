@@ -6,6 +6,9 @@
 -- Uses: org.quartz.impl.jdbcjobstore.oracle.OracleDelegate
 -- =============================================================================
 
+-- Connect to the pluggable database first
+ALTER SESSION SET CONTAINER = FREEPDB1;
+
 -- Connect as pentaho_user
 ALTER SESSION SET CURRENT_SCHEMA = pentaho_user;
 

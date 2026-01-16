@@ -5,6 +5,9 @@
 -- Data warehouse tables for Pentaho Operations Analytics
 -- =============================================================================
 
+-- Connect to the pluggable database first
+ALTER SESSION SET CONTAINER = FREEPDB1;
+
 -- Connect as hibuser (owns mart tables)
 ALTER SESSION SET CURRENT_SCHEMA = hibuser;
 

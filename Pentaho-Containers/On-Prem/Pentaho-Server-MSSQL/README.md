@@ -34,6 +34,9 @@ This project provides a production-ready Docker Compose deployment for:
 - Easy backup and restore
 - Production-ready configuration templates
 - Support for multiple SQL Server editions (Developer, Express, Standard, Enterprise)
+- **HashiCorp Vault** for secrets management
+- **Resource limits** (CPU/memory) for stability
+- **Log rotation** to prevent disk exhaustion
 
 ## Prerequisites
 
@@ -43,7 +46,7 @@ This project provides a production-ready Docker Compose deployment for:
 - **CPU**: 4+ cores recommended
 - **RAM**: 8GB minimum, 16GB recommended (SQL Server requires 2GB minimum)
 - **Disk**: 20GB+ available space
-- **Ports**: 8090 (HTTP), 8443 (HTTPS), 1433 (SQL Server)
+- **Ports**: 8090 (HTTP), 8443 (HTTPS), 1433 (SQL Server), 8200 (Vault)
 
 ### Software Requirements
 
@@ -328,10 +331,19 @@ Create a `.ignore` file in any directory to skip processing during startup.
 
 ```
 ┌─────────────────────────────────────────┐
+│  vault:8200                             │
+│  - HashiCorp Vault 1.15                 │
+│  - Secrets Management                   │
+│  - AppRole Authentication               │
+└─────────────┬───────────────────────────┘
+              │ Secrets API
+              ▼
+┌─────────────────────────────────────────┐
 │  pentaho-server:8090                    │
 │  - Pentaho Server 11.0.0.0-237          │
 │  - Tomcat 9                             │
 │  - OpenJDK 21                           │
+│  - Resource Limits: 6GB RAM, 4 CPUs     │
 └─────────────┬───────────────────────────┘
               │ JDBC Connection (port 1433)
               │ encrypt=false;trustServerCertificate=true
@@ -339,6 +351,7 @@ Create a `.ignore` file in any directory to skip processing during startup.
 ┌─────────────────────────────────────────┐
 │  mssql:1433 (hostname: repository)      │
 │  - SQL Server 2022 (Developer Edition)  │
+│  - Resource Limits: 4GB RAM, 2 CPUs     │
 │  - 5 Pentaho Databases:                 │
 │    • jackrabbit (JCR)                   │
 │    • quartz (Scheduler)                 │
@@ -369,6 +382,7 @@ The `mssql-init` container runs initialization scripts from `db_init_mssql/` dir
 
 Named Docker volumes ensure data persists across container restarts:
 
+- `vault_data` - Vault data and unseal keys
 - `pentaho_mssql_data` - SQL Server databases
 - `pentaho_solutions` - Pentaho solutions repository
 - `pentaho_data` - Pentaho data files
@@ -380,6 +394,161 @@ Bridge network `pentaho-net` (172.28.0.0/16) provides:
 - Service discovery (containers can reach each other by hostname)
 - Network isolation from host
 - Custom subnet to avoid VPN conflicts
+
+## Vault and Secrets Management
+
+### Overview
+
+This deployment uses HashiCorp Vault for secure secrets management. Database credentials are stored in Vault rather than in plain text environment variables or configuration files.
+
+### Clean Deployment Flow
+
+On a **clean deployment** (first run), the following sequence ensures all components can communicate:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  1. docker compose up -d                                                 │
+│                    ↓                                                     │
+│  2. SQL Server starts → runs db_init_mssql/*.sql scripts                │
+│     → Creates logins with default password "password"                   │
+│                    ↓                                                     │
+│  3. Vault container starts → vault-init.sh runs                         │
+│     → Stores SAME default passwords in Vault (not random ones!)         │
+│     → This ensures Pentaho can connect immediately                      │
+│                    ↓                                                     │
+│  4. Pentaho container starts → extra-entrypoint.sh runs                 │
+│     → Fetches credentials from Vault                                    │
+│     → Injects into context.xml                                          │
+│                    ↓                                                     │
+│  5. Pentaho connects to SQL Server successfully ✓                       │
+│                    ↓                                                     │
+│  6. AFTER VERIFICATION: Run ./scripts/rotate-secrets.sh                 │
+│     → Generates secure random passwords                                 │
+│     → Updates SQL Server logins (ALTER LOGIN)                           │
+│     → Updates Vault secrets                                             │
+│     → Restarts Pentaho to pick up new credentials                       │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Important**: Default passwords are **intentionally insecure**. After verifying the deployment works, rotate passwords immediately:
+
+```bash
+./scripts/rotate-secrets.sh
+```
+
+### Password Rotation
+
+Passwords should be rotated regularly for security. The recommended policy is every **90 days**.
+
+**Check rotation status:**
+```bash
+./scripts/validate-deployment.sh
+# Shows: Last Rotated, Days Since, Next Rotation date
+```
+
+**Rotate passwords:**
+```bash
+./scripts/rotate-secrets.sh
+
+# Options:
+#   --dry-run      Show what would be done without making changes
+#   --no-restart   Update passwords but don't restart Pentaho
+#   --user USER    Only rotate a specific user (jcr_user, pentaho_user, hibuser)
+```
+
+**What rotation does:**
+1. Generates new 24-character secure passwords
+2. Updates SQL Server logins with `ALTER LOGIN`
+3. Updates Vault secrets (creates new version)
+4. Saves to `generated-passwords.json` for recovery
+5. Restarts Pentaho to fetch new credentials
+
+### Vault Architecture
+
+```
+┌─────────────────────────────────────────┐
+│  Vault Server (vault:8200)              │
+│  - File storage backend                 │
+│  - Auto-initialized on first start      │
+│  - KV v2 secrets engine                 │
+└─────────────────────────────────────────┘
+              │
+              ├── secret/data/pentaho/mssql
+              │   ├── sa_password
+              │   ├── jcr_user / jcr_password
+              │   ├── pentaho_user / pentaho_password
+              │   ├── hibuser / hibuser_password
+              │   ├── jdbc_url
+              │   ├── passwords_source (default/rotated)
+              │   └── rotated_at (timestamp)
+              │
+              └── AppRole: pentaho
+                  └── Policy: pentaho-policy
+```
+
+### Secrets Storage
+
+Database credentials are stored at `secret/data/pentaho/mssql`:
+
+| Key | Description |
+|-----|-------------|
+| `sa_password` | SQL Server SA password |
+| `jcr_user` / `jcr_password` | JackRabbit content repository credentials |
+| `pentaho_user` / `pentaho_password` | Quartz scheduler credentials |
+| `hibuser` / `hibuser_password` | Hibernate repository credentials |
+| `jdbc_url` | JDBC connection URL |
+| `passwords_source` | `default` (insecure) or `rotated` (secure) |
+| `rotated_at` | Timestamp of last password rotation |
+
+### Accessing Vault
+
+```bash
+# Get Vault status
+docker compose exec vault vault status
+
+# View stored secrets (requires root token)
+docker compose exec vault vault kv get secret/pentaho/mssql
+
+# Get root token from vault-keys.json
+docker compose exec vault cat /vault/data/vault-keys.json | jq -r '.root_token'
+```
+
+### Docker Secrets Integration
+
+The deployment also uses Docker secrets for initial database passwords:
+
+```
+secrets/
+└── mssql_sa_password.txt    # SQL Server SA password
+```
+
+These are mounted at `/run/secrets/` inside containers and referenced via `*_FILE` environment variables.
+
+## Security Features
+
+### Resource Limits
+
+All containers have CPU and memory limits to prevent resource exhaustion:
+
+| Service | Memory Limit | CPU Limit | Memory Reservation |
+|---------|-------------|-----------|-------------------|
+| Vault | 512MB | 0.5 | 256MB |
+| SQL Server | 4GB | 2 | 2GB |
+| Pentaho | 6GB | 4 | 2GB |
+
+### Log Rotation
+
+All containers use JSON file logging with rotation:
+
+| Service | Max Size | Max Files | Total Max |
+|---------|----------|-----------|-----------|
+| Vault | 50MB | 3 | 150MB |
+| SQL Server | 100MB | 5 | 500MB |
+| Pentaho | 200MB | 5 | 1GB |
+
+### Graceful Shutdown
+
+All services have `stop_grace_period: 60s` to allow clean shutdown.
 
 ## Database Management
 
@@ -680,10 +849,10 @@ Set up cron job for regular backups:
 crontab -e
 
 # Add daily backup at 2 AM
-0 2 * * * /path/to/pentaho-mssql-ubuntu/scripts/backup-mssql.sh
+0 2 * * * /path/to/Pentaho-Server-MSSQL/scripts/backup-mssql.sh
 
 # Add weekly cleanup (keep last 30 days)
-0 3 * * 0 find /path/to/pentaho-mssql-ubuntu/backups/ -name "*.bak" -mtime +30 -delete
+0 3 * * 0 find /path/to/Pentaho-Server-MSSQL/backups/ -name "*.bak" -mtime +30 -delete
 ```
 
 ### Disaster Recovery
@@ -863,7 +1032,7 @@ This is a standalone deployment project. To modify:
 ## Project Structure
 
 ```
-pentaho-mssql-ubuntu/
+Pentaho-Server-MSSQL/
 ├── README.md                    # This documentation file
 ├── CHANGELOG.md                 # Version history and changes
 ├── ARCHITECTURE.md              # Detailed system architecture
@@ -951,6 +1120,67 @@ Key files to configure:
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
+### Version 1.2.0 (2026-01-16)
+
+**Dynamic Password Generation:**
+- Database user passwords (jcr_user, pentaho_user, hibuser) are now automatically generated
+- Secure 24-character passwords with complexity requirements
+- Passwords persisted in `/vault/data/generated-passwords.json` for consistency across restarts
+- No more hardcoded default passwords for database users
+
+**Security Improvements:**
+- Root token and secrets no longer logged in plain text (masked output)
+- Vault secrets verification added to validation script
+- AppRole authentication tested during deployment validation
+- Validation script displays all stored secrets for verification
+- Vault automatically sealed after secrets verification (production best practice)
+
+**Reliability Enhancements:**
+- Retry logic with configurable attempts (30 retries, 2s interval) for Vault initialization
+- Better error handling and progress output during startup
+- Secrets verification confirms credentials are properly stored
+
+**Vault Backup & Restore:**
+- New `scripts/backup-vault.sh` - Creates timestamped backups of Vault credentials
+- New `scripts/restore-vault.sh` - Restores Vault from backup with confirmation
+- Backups include: vault-keys.json, approle-creds.json, generated-passwords.json
+
+**Usage:**
+```bash
+# Backup Vault credentials
+./scripts/backup-vault.sh
+
+# Restore from backup
+./scripts/restore-vault.sh backups/vault-backup-YYYYMMDD-HHMMSS.tar.gz
+```
+
+### Version 1.1.0 (2026-01-16)
+
+**Security Enhancements:**
+- Added HashiCorp Vault integration for secrets management
+- Database credentials now stored in Vault instead of plain text
+- AppRole authentication for Pentaho to retrieve secrets
+- Docker secrets integration for SA password
+
+**Resource Management:**
+- Added CPU and memory limits to all containers
+- Vault: 512MB RAM, 0.5 CPUs
+- SQL Server: 4GB RAM, 2 CPUs
+- Pentaho: 6GB RAM (configurable), 4 CPUs
+
+**Reliability:**
+- Added JSON log driver with rotation to all containers
+- Added `stop_grace_period: 60s` for graceful shutdown
+- Increased health check retries for Pentaho startup
+- Added tmpfs for temporary directories
+
+**New Files:**
+- `vault/config/vault.hcl` - Vault server configuration
+- `vault/policies/pentaho-policy.hcl` - Access policy
+- `secrets/mssql_sa_password.txt` - Docker secrets file
+- `scripts/vault-init.sh` - Vault initialization script
+- `scripts/fetch-secrets.sh` - Secret retrieval helper
+
 ### Version 1.0.0 (2026-01-13)
 
 **Database Changes:**
@@ -991,9 +1221,9 @@ docker compose logs --tail=100 pentaho-server
 
 ---
 
-**Project Version**: 1.0.0
+**Project Version**: 1.2.0
 **Pentaho Version**: 11.0.0.0-237
 **SQL Server Version**: 2022 (Developer Edition)
-**Last Updated**: 2026-01-13
+**Last Updated**: 2026-01-16
 
 For questions or issues with this deployment, refer to the Troubleshooting section or review the generated logs.

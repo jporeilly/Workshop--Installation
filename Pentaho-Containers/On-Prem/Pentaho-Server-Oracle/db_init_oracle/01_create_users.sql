@@ -6,8 +6,10 @@
 -- Each user owns their own schema in Oracle (unlike MySQL separate databases)
 -- =============================================================================
 
--- Connect as SYSDBA to create users
--- Note: gvenzl/oracle-free image runs scripts as SYSDBA by default
+-- Connect to the pluggable database (FREEPDB1)
+-- The gvenzl/oracle-free image runs init scripts in CDB by default,
+-- so we must explicitly switch to the PDB where Pentaho will connect
+ALTER SESSION SET CONTAINER = FREEPDB1;
 
 -- -----------------------------------------------------------------------------
 -- Create Jackrabbit (JCR) User
@@ -23,6 +25,7 @@ GRANT CREATE SESSION TO jcr_user;
 GRANT CREATE TABLE TO jcr_user;
 GRANT CREATE SEQUENCE TO jcr_user;
 GRANT CREATE VIEW TO jcr_user;
+GRANT UNLIMITED TABLESPACE TO jcr_user;
 
 -- -----------------------------------------------------------------------------
 -- Create Quartz User
@@ -37,6 +40,7 @@ GRANT CONNECT, RESOURCE TO pentaho_user;
 GRANT CREATE SESSION TO pentaho_user;
 GRANT CREATE TABLE TO pentaho_user;
 GRANT CREATE SEQUENCE TO pentaho_user;
+GRANT UNLIMITED TABLESPACE TO pentaho_user;
 
 -- -----------------------------------------------------------------------------
 -- Create Hibernate User
@@ -52,10 +56,6 @@ GRANT CREATE SESSION TO hibuser;
 GRANT CREATE TABLE TO hibuser;
 GRANT CREATE SEQUENCE TO hibuser;
 GRANT CREATE VIEW TO hibuser;
-
--- -----------------------------------------------------------------------------
--- Grant cross-schema access for hibuser (needs access to logging/mart schemas)
--- -----------------------------------------------------------------------------
--- hibuser will also own the logging and operations mart tables
+GRANT UNLIMITED TABLESPACE TO hibuser;
 
 COMMIT;

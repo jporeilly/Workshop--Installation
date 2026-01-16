@@ -109,7 +109,7 @@ PENTAHO_HTTP_PORT=8091
 ```bash
 # Remove potentially corrupted volume
 docker compose down
-docker volume rm pentaho-mysql-ubuntu_pentaho_mysql_data
+docker volume rm pentaho-server-mysql_pentaho_mysql_data
 
 # Restart
 docker compose up -d mysql
@@ -193,7 +193,7 @@ docker compose exec mysql mysql -uroot -ppassword -e "SHOW DATABASES;"
 ```bash
 # Recreate MySQL with fresh volumes
 docker compose down
-docker volume rm pentaho-mysql-ubuntu_pentaho_mysql_data
+docker volume rm pentaho-server-mysql_pentaho_mysql_data
 docker compose up -d mysql
 
 # Wait for initialization
@@ -346,7 +346,7 @@ Unknown host: repository
 docker network ls | grep pentaho
 
 # Check containers are on same network
-docker network inspect pentaho-mysql-ubuntu_pentaho-net
+docker network inspect pentaho-server-mysql_pentaho-net
 ```
 
 **Solution:**
@@ -538,7 +538,7 @@ docker compose up -d pentaho-server
 # MySQL only (WARNING: deletes data)
 docker compose stop mysql
 docker compose rm -f mysql
-docker volume rm pentaho-mysql-ubuntu_pentaho_mysql_data
+docker volume rm pentaho-server-mysql_pentaho_mysql_data
 docker compose up -d mysql
 ```
 
@@ -549,7 +549,7 @@ docker compose up -d mysql
 docker compose down
 
 # Remove current MySQL volume
-docker volume rm pentaho-mysql-ubuntu_pentaho_mysql_data
+docker volume rm pentaho-server-mysql_pentaho_mysql_data
 
 # Start MySQL
 docker compose up -d mysql

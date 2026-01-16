@@ -5,6 +5,80 @@ All notable changes to the Pentaho Server 11 Docker Deployment project are docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-01-16
+
+### Added
+
+- **Dynamic Password Generation**:
+  - Database user passwords (jcr_user, pentaho_user, hibuser) are now automatically generated
+  - Secure 24-character passwords with complexity requirements (uppercase, lowercase, digits, special chars)
+  - Passwords persisted in `/vault/data/generated-passwords.json` for consistency across restarts
+  - No more hardcoded default passwords for database users
+
+- **Vault Backup & Restore Scripts**:
+  - `scripts/backup-vault.sh` - Creates timestamped backups of Vault credentials
+  - `scripts/restore-vault.sh` - Restores Vault from backup with confirmation prompt
+  - Backups include: vault-keys.json, approle-creds.json, generated-passwords.json
+
+- **Validation Script Enhancements**:
+  - Displays all secrets stored in Vault during validation
+  - Automatically seals Vault after secrets verification (production best practice)
+  - Shows production security notes about Vault sealed state
+
+### Changed
+
+- **Security Improvements**:
+  - Root token and secrets no longer logged in plain text (masked output: `hvs....4JrR`)
+  - Vault secrets verification added to validation script
+  - AppRole authentication tested during deployment validation
+
+- **Reliability Enhancements**:
+  - Retry logic with configurable attempts (30 retries, 2s interval) for Vault initialization
+  - Better error handling and progress output during startup
+  - Secrets verification confirms credentials are properly stored
+
+### Fixed
+
+- **jq Boolean Parsing**: Fixed validation script to correctly detect Vault sealed/unsealed state
+  - The `//` operator in jq treats `false` as falsy, causing incorrect results
+  - Changed from `.sealed // "unknown"` to `if .sealed == null then "unknown" else .sealed | tostring end`
+
+---
+
+## [1.1.0] - 2026-01-16
+
+### Added
+
+- **HashiCorp Vault Integration**:
+  - Database credentials now stored in Vault instead of plain text
+  - AppRole authentication for Pentaho to retrieve secrets
+  - Docker secrets integration for initial MySQL root password
+  - New files: `vault/config/vault.hcl`, `vault/policies/pentaho-policy.hcl`
+  - New scripts: `scripts/vault-init.sh`, `scripts/fetch-secrets.sh`
+
+- **Container Hardening**:
+  - MySQL container now runs in read-only mode
+  - Added tmpfs mounts for writable directories (`/tmp`, `/var/run/mysqld`)
+  - Pentaho server has tmpfs for Tomcat temp and work directories
+
+- **Resource Management**:
+  - Added CPU and memory limits to all containers
+  - Vault: 512MB RAM, 0.5 CPUs
+  - MySQL: 2GB RAM, 2 CPUs
+  - Pentaho: 6GB RAM (configurable), 4 CPUs
+
+### Changed
+
+- **Logging**:
+  - Added JSON log driver with rotation to all containers
+  - Log files limited to 10MB with 3 rotated files
+
+- **Reliability**:
+  - Added `stop_grace_period: 60s` for graceful shutdown
+  - Increased health check retries for Pentaho startup
+
+---
+
 ## [1.0.1] - 2026-01-12
 
 ### Added
@@ -140,6 +214,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 1.2.0 | 2026-01-16 | Dynamic passwords, backup/restore, validation enhancements |
+| 1.1.0 | 2026-01-16 | HashiCorp Vault integration, container hardening |
 | 1.0.1 | 2026-01-12 | Fixed health check, added workshop document |
 | 1.0.0 | 2026-01-12 | Production-ready release with documentation |
 | 0.9.0 | 2026-01-05 | Initial development release |

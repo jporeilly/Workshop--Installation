@@ -49,7 +49,7 @@ fi
 
 # Perform backup
 echo "Creating backup..."
-if docker exec "$CONTAINER_NAME" pg_dumpall -U postgres > "$BACKUP_DIR/$BACKUP_FILE"; then
+if docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-postgres}" "$CONTAINER_NAME" pg_dumpall -U postgres > "$BACKUP_DIR/$BACKUP_FILE"; then
 
     # Compress backup
     echo "Compressing backup..."

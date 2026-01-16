@@ -33,6 +33,10 @@ This project provides a production-ready Docker Compose deployment for:
 - Persistent data volumes
 - Easy backup and restore
 - Production-ready configuration templates
+- **HashiCorp Vault** for secrets management
+- **Read-only containers** with tmpfs mounts for security
+- **Resource limits** (CPU/memory) for stability
+- **Log rotation** to prevent disk exhaustion
 
 ## Prerequisites
 
@@ -42,7 +46,7 @@ This project provides a production-ready Docker Compose deployment for:
 - **CPU**: 4+ cores recommended
 - **RAM**: 8GB minimum, 16GB recommended
 - **Disk**: 20GB+ available space
-- **Ports**: 8090 (HTTP), 8443 (HTTPS), 3306 (MySQL)
+- **Ports**: 8090 (HTTP), 8443 (HTTPS), 3306 (MySQL), 8200 (Vault)
 
 ### Software Requirements
 
@@ -272,16 +276,26 @@ Create a `.ignore` file in any directory to skip processing during startup.
 
 ```
 ┌─────────────────────────────────────────┐
+│  vault:8200                             │
+│  - HashiCorp Vault 1.15                 │
+│  - Secrets Management                   │
+│  - AppRole Authentication               │
+└─────────────┬───────────────────────────┘
+              │ Secrets API
+              ▼
+┌─────────────────────────────────────────┐
 │  pentaho-server:8090                    │
 │  - Pentaho Server 11.0.0.0-237          │
 │  - Tomcat 9                             │
 │  - OpenJDK 21                           │
+│  - Resource Limits: 6GB RAM, 4 CPUs     │
 └─────────────┬───────────────────────────┘
               │ JDBC Connection
               ▼
 ┌─────────────────────────────────────────┐
 │  mysql:3306 (hostname: repository)      │
-│  - MySQL 8.0                            │
+│  - MySQL 8.0 (read-only container)      │
+│  - Resource Limits: 2GB RAM, 2 CPUs     │
 │  - 5 Pentaho Databases:                 │
 │    • jackrabbit (JCR)                   │
 │    • quartz (Scheduler)                 │
@@ -296,6 +310,7 @@ Create a `.ignore` file in any directory to skip processing during startup.
 
 Named Docker volumes ensure data persists across container restarts:
 
+- `vault_data` - Vault data and unseal keys
 - `pentaho_mysql_data` - MySQL databases
 - `pentaho_solutions` - Pentaho solutions repository
 - `pentaho_data` - Pentaho data files
@@ -307,6 +322,110 @@ Bridge network `pentaho-net` (172.28.0.0/16) provides:
 - Service discovery (containers can reach each other by hostname)
 - Network isolation from host
 - Custom subnet to avoid VPN conflicts
+
+## Vault and Secrets Management
+
+### Overview
+
+This deployment uses HashiCorp Vault for secure secrets management. Database credentials are stored in Vault rather than in plain text environment variables or configuration files.
+
+### Vault Architecture
+
+```
+┌─────────────────────────────────────────┐
+│  Vault Server (vault:8200)              │
+│  - File storage backend                 │
+│  - Auto-initialized on first start      │
+│  - KV v2 secrets engine                 │
+└─────────────────────────────────────────┘
+              │
+              ├── secret/data/pentaho/mysql
+              │   ├── root_password
+              │   ├── pentaho_user
+              │   ├── pentaho_password
+              │   └── jdbc_url
+              │
+              └── AppRole: pentaho
+                  └── Policy: pentaho-policy
+```
+
+### Secrets Storage
+
+Database credentials are stored at `secret/data/pentaho/mysql`:
+
+| Key | Description |
+|-----|-------------|
+| `root_password` | MySQL root password |
+| `pentaho_user` | Pentaho database username |
+| `pentaho_password` | Pentaho database password |
+| `jdbc_url` | JDBC connection URL |
+
+### Accessing Vault
+
+```bash
+# Get Vault status
+docker compose exec vault vault status
+
+# View stored secrets (requires root token)
+docker compose exec vault vault kv get secret/pentaho/mysql
+
+# Get root token from vault-keys.json
+docker compose exec vault cat /vault/data/vault-keys.json | jq -r '.root_token'
+```
+
+### Docker Secrets Integration
+
+The deployment also uses Docker secrets for initial database passwords:
+
+```
+secrets/
+└── mysql_root_password.txt    # MySQL root password
+```
+
+These are mounted at `/run/secrets/` inside containers and referenced via `*_FILE` environment variables.
+
+### Vault UI
+
+Access the Vault web UI at http://localhost:8200 (use the root token to authenticate).
+
+## Security Features
+
+### Read-Only Containers
+
+Database containers run in read-only mode with explicit tmpfs mounts for writable areas:
+
+**MySQL:**
+- `/tmp` - Temporary files (256MB)
+- `/var/run/mysqld` - Socket directory (64MB)
+
+**Pentaho Server:**
+- `/tmp` - Temporary files (512MB)
+- `/opt/pentaho/pentaho-server/tomcat/temp` - Tomcat temp (256MB)
+- `/opt/pentaho/pentaho-server/tomcat/work` - Tomcat work (256MB)
+
+### Resource Limits
+
+All containers have CPU and memory limits to prevent resource exhaustion:
+
+| Service | Memory Limit | CPU Limit | Memory Reservation |
+|---------|-------------|-----------|-------------------|
+| Vault | 512MB | 0.5 | 256MB |
+| MySQL | 2GB | 2 | 512MB |
+| Pentaho | 6GB | 4 | 2GB |
+
+### Log Rotation
+
+All containers use JSON file logging with rotation:
+
+| Service | Max Size | Max Files | Total Max |
+|---------|----------|-----------|-----------|
+| Vault | 50MB | 3 | 150MB |
+| MySQL | 100MB | 5 | 500MB |
+| Pentaho | 200MB | 5 | 1GB |
+
+### Graceful Shutdown
+
+All services have `stop_grace_period: 60s` to allow clean shutdown.
 
 ## Database Management
 
@@ -523,10 +642,10 @@ Set up cron job for regular backups:
 crontab -e
 
 # Add daily backup at 2 AM
-0 2 * * * /path/to/pentaho-mysql-ubuntu/scripts/backup-mysql.sh
+0 2 * * * /path/to/Pentaho-Server-mySQL/scripts/backup-mysql.sh
 
 # Add weekly cleanup (keep last 30 days)
-0 3 * * 0 find /path/to/pentaho-mysql-ubuntu/backups/ -name "*.sql.gz" -mtime +30 -delete
+0 3 * * 0 find /path/to/Pentaho-Server-mySQL/backups/ -name "*.sql.gz" -mtime +30 -delete
 ```
 
 ### Disaster Recovery
@@ -663,7 +782,7 @@ This is a standalone deployment project. To modify:
 ## Project Structure
 
 ```
-pentaho-mysql-ubuntu/
+Pentaho-Server-mySQL/
 ├── README.md                    # This documentation file
 ├── CHANGELOG.md                 # Version history and changes
 ├── ARCHITECTURE.md              # Detailed system architecture
@@ -681,6 +800,15 @@ pentaho-mysql-ubuntu/
 │   │   └── docker-entrypoint.sh # Startup script (processes softwareOverride)
 │   └── stagedArtifacts/         # Pentaho installation packages
 │       └── pentaho-server-ee-11.0.0.0-237.zip
+│
+├── vault/                       # HashiCorp Vault configuration
+│   ├── config/
+│   │   └── vault.hcl            # Vault server configuration
+│   └── policies/
+│       └── pentaho-policy.hcl   # Pentaho access policy
+│
+├── secrets/                     # Docker secrets (file-based)
+│   └── mysql_root_password.txt  # MySQL root password
 │
 ├── db_init_mysql/               # MySQL initialization scripts
 │   ├── 1_create_jcr_mysql.sql   # JackRabbit content repository
@@ -701,6 +829,8 @@ pentaho-mysql-ubuntu/
 │   └── 99_exchange/             # User data exchange
 │
 ├── scripts/                     # Utility scripts
+│   ├── vault-init.sh            # Vault initialization and secrets setup
+│   ├── fetch-secrets.sh         # Retrieve secrets from Vault
 │   ├── backup-mysql.sh          # Database backup
 │   ├── restore-mysql.sh         # Database restore
 │   └── validate-deployment.sh   # Deployment validation
@@ -726,6 +856,71 @@ pentaho-mysql-ubuntu/
 ## Recent Changes
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
+
+### Version 1.2.0 (2026-01-16)
+
+**Dynamic Password Generation:**
+- Database user passwords (jcr_user, pentaho_user, hibuser) are now automatically generated
+- Secure 24-character passwords with complexity requirements
+- Passwords persisted in `/vault/data/generated-passwords.json` for consistency across restarts
+- No more hardcoded default passwords for database users
+
+**Security Improvements:**
+- Root token and secrets no longer logged in plain text (masked output)
+- Vault secrets verification added to validation script
+- AppRole authentication tested during deployment validation
+- Validation script displays all stored secrets for verification
+- Vault automatically sealed after secrets verification (production best practice)
+
+**Reliability Enhancements:**
+- Retry logic with configurable attempts (30 retries, 2s interval) for Vault initialization
+- Better error handling and progress output during startup
+- Secrets verification confirms credentials are properly stored
+
+**Vault Backup & Restore:**
+- New `scripts/backup-vault.sh` - Creates timestamped backups of Vault credentials
+- New `scripts/restore-vault.sh` - Restores Vault from backup with confirmation
+- Backups include: vault-keys.json, approle-creds.json, generated-passwords.json
+
+**Usage:**
+```bash
+# Backup Vault credentials
+./scripts/backup-vault.sh
+
+# Restore from backup
+./scripts/restore-vault.sh backups/vault-backup-YYYYMMDD-HHMMSS.tar.gz
+```
+
+### Version 1.1.0 (2026-01-16)
+
+**Security Enhancements:**
+- Added HashiCorp Vault integration for secrets management
+- Database credentials now stored in Vault instead of plain text
+- AppRole authentication for Pentaho to retrieve secrets
+- Docker secrets integration for initial passwords
+
+**Container Hardening:**
+- MySQL container now runs in read-only mode
+- Added tmpfs mounts for writable directories (`/tmp`, `/var/run/mysqld`)
+- Pentaho server has tmpfs for Tomcat temp and work directories
+
+**Resource Management:**
+- Added CPU and memory limits to all containers
+- Vault: 512MB RAM, 0.5 CPUs
+- MySQL: 2GB RAM, 2 CPUs
+- Pentaho: 6GB RAM (configurable), 4 CPUs
+
+**Reliability:**
+- Added JSON log driver with rotation to all containers
+- Added `stop_grace_period: 60s` for graceful shutdown
+- Increased health check retries for Pentaho startup
+
+**New Files:**
+- `vault/config/vault.hcl` - Vault server configuration
+- `vault/policies/pentaho-policy.hcl` - Access policy
+- `secrets/mysql_root_password.txt` - Docker secrets file
+- `scripts/vault-init.sh` - Vault initialization script
+- `scripts/fetch-secrets.sh` - Secret retrieval helper
 
 ### Version 1.0.0 (2026-01-12)
 
@@ -754,8 +949,8 @@ docker compose logs -f
 
 ---
 
-**Project Version**: 1.0.0
+**Project Version**: 1.2.0
 **Pentaho Version**: 11.0.0.0-237
-**Last Updated**: 2026-01-12
+**Last Updated**: 2026-01-16
 
 For questions or issues with this deployment, refer to the Troubleshooting section or review the generated logs.

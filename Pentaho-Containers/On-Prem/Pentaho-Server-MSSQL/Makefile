@@ -7,7 +7,7 @@ export
 
 # Docker Compose command
 COMPOSE := docker compose
-PROJECT_NAME := pentaho-mssql-ubuntu
+PROJECT_NAME := pentaho-server-mssql
 
 # Colors for output
 GREEN  := \033[0;32m

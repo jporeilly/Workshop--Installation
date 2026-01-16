@@ -1,4 +1,66 @@
 services:
+  # HashiCorp Vault for Secrets Management
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: pentaho-vault
+    hostname: vault
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_ADDR: http://0.0.0.0:8200
+      VAULT_API_ADDR: http://0.0.0.0:8200
+    ports:
+      - "${VAULT_PORT:-8200}:8200"
+    volumes:
+      - vault_data:/vault/data
+      - ./vault/config:/vault/config:ro
+    entrypoint: /bin/sh
+    command: >
+      -c "chown -R vault:vault /vault/data &&
+          exec docker-entrypoint.sh vault server -config=/vault/config/vault.hcl"
+    networks:
+      - pentaho-net
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -q --spider http://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedok=true&uninitok=true || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+
+  # Vault Initialization (runs once)
+  vault-init:
+    image: hashicorp/vault:1.15
+    container_name: pentaho-vault-init
+    user: root
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: http://vault:8200
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Pentaho@2026}
+      PENTAHO_DB_PASSWORD: ${PENTAHO_DB_PASSWORD:-pentaho}
+    volumes:
+      - vault_data:/vault/data
+      - ./scripts:/scripts:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["apk add --no-cache curl jq bash && /scripts/vault-init.sh"]
+    networks:
+      - pentaho-net
+    restart: "no"
+
   # Microsoft SQL Server with Pentaho Repository
   mssql:
     image: mcr.microsoft.com/mssql/server:2022-latest
@@ -7,7 +69,7 @@ services:
     restart: unless-stopped
     environment:
       ACCEPT_EULA: Y
-      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Pentaho@2026}
+      MSSQL_SA_PASSWORD_FILE: /run/secrets/mssql_sa_password
       MSSQL_PID: ${MSSQL_PID:-Developer}
       TZ: America/New_York
     ports:
@@ -16,14 +78,31 @@ services:
       - pentaho_mssql_data:/var/opt/mssql
       - ./db_init_mssql:/docker-entrypoint-initdb.d:ro
       - ./mssql-config:/etc/mssql-config:ro
+    tmpfs:
+      - /tmp:size=256M,mode=1777
+    secrets:
+      - mssql_sa_password
     networks:
       - pentaho-net
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $$MSSQL_SA_PASSWORD -Q 'SELECT 1' || exit 1"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $$(cat /run/secrets/mssql_sa_password) -Q 'SELECT 1' -C || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 60s
+    stop_grace_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2'
+        reservations:
+          memory: 2G
 
   # Database Initialization (runs once)
   mssql-init:
@@ -33,19 +112,22 @@ services:
       mssql:
         condition: service_healthy
     environment:
-      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Pentaho@2026}
+      MSSQL_SA_PASSWORD_FILE: /run/secrets/mssql_sa_password
     volumes:
       - ./db_init_mssql:/scripts:ro
+    secrets:
+      - mssql_sa_password
     networks:
       - pentaho-net
     command: >
       bash -c '
+        SA_PASSWORD=$$(cat /run/secrets/mssql_sa_password);
         echo "Waiting for SQL Server to be fully ready...";
         sleep 10;
         echo "Initializing Pentaho databases...";
         for script in /scripts/*.sql; do
           echo "Executing $$script...";
-          /opt/mssql-tools/bin/sqlcmd -S repository -U sa -P "$$MSSQL_SA_PASSWORD" -i "$$script";
+          /opt/mssql-tools18/bin/sqlcmd -S repository -U sa -P "$$SA_PASSWORD" -i "$$script" -C;
           if [ $$? -eq 0 ]; then
             echo "$$script executed successfully";
           else
@@ -56,6 +138,11 @@ services:
         echo "Database initialization completed successfully";
       '
     restart: "no"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
 
   # Pentaho Server
   pentaho-server:
@@ -74,12 +161,16 @@ services:
         condition: service_healthy
       mssql-init:
         condition: service_completed_successfully
+      vault-init:
+        condition: service_completed_successfully
     environment:
       - PENTAHO_MIN_MEMORY=${PENTAHO_MIN_MEMORY:-2048m}
       - PENTAHO_MAX_MEMORY=${PENTAHO_MAX_MEMORY:-4096m}
       - LICENSE_URL=${LICENSE_URL:-}
       - PENTAHO_SERVER_PATH=${PENTAHO_SERVER_PATH:-/opt/pentaho/pentaho-server}
       - INSTALLATION_PATH=${INSTALLATION_PATH:-/opt/pentaho}
+      - VAULT_ADDR=http://vault:8200
+      - DB_TYPE=mssql
     ports:
       - "${PENTAHO_HTTP_PORT:-8090}:8080"
       - "${PENTAHO_HTTPS_PORT:-8443}:8443"
@@ -89,19 +180,38 @@ services:
       # User configuration directories
       - ./config/.kettle:/home/pentaho/.kettle
       - ./config/.pentaho:/home/pentaho/.pentaho
-      # Log directory - commented out to avoid permission issues, use docker logs instead
-      # - ./logs:/opt/pentaho/pentaho-server/tomcat/logs
       # Named volumes for data persistence
       - pentaho_solutions:/opt/pentaho/pentaho-server/pentaho-solutions
       - pentaho_data:/opt/pentaho/pentaho-server/data
+      # Vault credentials (read-only)
+      - vault_data:/vault/data:ro
+      # Scripts for fetching secrets
+      - ./scripts:/scripts:ro
+    tmpfs:
+      - /tmp:size=512M,mode=1777
+      - /opt/pentaho/pentaho-server/tomcat/temp:size=256M,mode=1777
+      - /opt/pentaho/pentaho-server/tomcat/work:size=256M,mode=1777
     networks:
       - pentaho-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/pentaho/Login"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 120s
+      retries: 5
+      start_period: 180s
+    stop_grace_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          memory: ${PENTAHO_MAX_MEMORY_LIMIT:-6G}
+          cpus: '4'
+        reservations:
+          memory: ${PENTAHO_MIN_MEMORY:-2048m}
 
 networks:
   pentaho-net:
@@ -111,9 +221,15 @@ networks:
         - subnet: 172.28.0.0/16
 
 volumes:
+  vault_data:
+    driver: local
   pentaho_mssql_data:
     driver: local
   pentaho_solutions:
     driver: local
   pentaho_data:
     driver: local
+
+secrets:
+  mssql_sa_password:
+    file: ./secrets/mssql_sa_password.txt

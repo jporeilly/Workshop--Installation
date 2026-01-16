@@ -18,14 +18,24 @@
 #   INSTALLATION_PATH   - Root installation path (set in Dockerfile)
 #   LICENSE_URL         - Optional URL to download EE license file
 #
+# Configuration Overlay:
+#   Files in /docker-entrypoint-init (mounted from softwareOverride/)
+#   are copied to $PENTAHO_SERVER_PATH in alphabetical order by directory.
+#   This allows customizing Pentaho configuration without modifying the
+#   base installation.
+#
 # =============================================================================
 
 # Configure JVM options for Tomcat
+# - NODE_NAME: Container hostname for cluster identification
+# - headless: Required for server environments without display
 export CATALINA_OPTS="$CATALINA_OPTS -DNODE_NAME=$(hostname) -Djava.awt.headless=true"
 
 # =============================================================================
 # License Configuration
 # =============================================================================
+# Check if LICENSE_URL environment variable is set
+# Enterprise Edition features require a valid license
 if [ -z "$LICENSE_URL" ]; then
 	echo '$LICENSE_URL is not set - running without EE license'
 fi
@@ -38,12 +48,16 @@ fi
 #   2_repository/ - Database configuration (Hibernate, JackRabbit, Quartz)
 #   3_security/   - Authentication settings (Spring Security)
 #   4_others/     - Tomcat config, defaults, and miscellaneous
+#
+# The alphabetical ordering ensures drivers are available before
+# repository configuration is applied.
 
 echo "Pentaho Server Version: $PENTAHO_VERSION"
 echo "Processing configuration overlays from /docker-entrypoint-init..."
 
 for dir in $(find /docker-entrypoint-init/ -mindepth 1 -maxdepth 1 -type d | sort); do
 	# Skip directories containing a .ignore file
+	# This allows temporarily disabling specific configurations
 	if [ -f "$dir/.ignore" ]; then
 		echo "Skipping $dir (contains .ignore file)"
 		continue
@@ -60,6 +74,8 @@ echo "Configuration overlay complete."
 # =============================================================================
 # Custom Entrypoint Extension
 # =============================================================================
+# If extra-entrypoint.sh exists, execute it
+# This allows users to add custom initialization logic
 if [ -f "$PENTAHO_SERVER_PATH/extra-entrypoint.sh" ]; then
 	echo "Executing custom entrypoint: extra-entrypoint.sh"
 	. "$PENTAHO_SERVER_PATH/extra-entrypoint.sh"
@@ -68,6 +84,8 @@ fi
 # =============================================================================
 # License Installation
 # =============================================================================
+# Install EE license if LICENSE_URL is provided and license not already installed
+# License file is stored in ~/.pentaho/.elmLicInfo.plt
 if [ ! -f ~/.pentaho/.elmLicInfo.plt ] && [ -n "$LICENSE_URL" ]; then
 	echo "Installing Enterprise Edition license from: $LICENSE_URL"
 	$INSTALLATION_PATH/license-installer/install_license.sh "$LICENSE_URL"
@@ -76,5 +94,6 @@ fi
 # =============================================================================
 # Start Pentaho Server
 # =============================================================================
+# Execute the command passed to the container (default: ./start-pentaho.sh)
 echo "Starting Pentaho Server..."
 exec "$@"

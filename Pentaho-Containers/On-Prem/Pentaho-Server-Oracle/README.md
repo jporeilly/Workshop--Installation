@@ -33,6 +33,9 @@ This project provides a production-ready Docker Compose deployment for:
 - Persistent data volumes
 - Easy backup and restore using Oracle Data Pump
 - Production-ready configuration templates
+- **HashiCorp Vault** for secrets management
+- **Resource limits** (CPU/memory) for stability
+- **Log rotation** to prevent disk exhaustion
 
 ## Prerequisites
 
@@ -42,7 +45,7 @@ This project provides a production-ready Docker Compose deployment for:
 - **CPU**: 4+ cores recommended
 - **RAM**: 8GB minimum, 16GB recommended (Oracle requires 2GB minimum)
 - **Disk**: 15GB+ available space (Oracle needs ~8GB)
-- **Ports**: 8090 (HTTP), 8443 (HTTPS), 1521 (Oracle)
+- **Ports**: 8090 (HTTP), 8443 (HTTPS), 1521 (Oracle), 8200 (Vault)
 
 ### Software Requirements
 
@@ -290,10 +293,19 @@ Create a `.ignore` file in any directory to skip processing during startup.
 
 ```
 ┌─────────────────────────────────────────┐
+│  vault:8200                             │
+│  - HashiCorp Vault 1.15                 │
+│  - Secrets Management                   │
+│  - AppRole Authentication               │
+└─────────────┬───────────────────────────┘
+              │ Secrets API
+              ▼
+┌─────────────────────────────────────────┐
 │  pentaho-server:8090                    │
 │  - Pentaho Server 11.0.0.0-237          │
 │  - Tomcat 9                             │
 │  - OpenJDK 21                           │
+│  - Resource Limits: 10GB RAM, 4 CPUs    │
 └─────────────┬───────────────────────────┘
               │ JDBC Connection (port 1521)
               │ Service: FREEPDB1
@@ -301,6 +313,7 @@ Create a `.ignore` file in any directory to skip processing during startup.
 ┌─────────────────────────────────────────┐
 │  oracle:1521 (hostname: repository)     │
 │  - Oracle Database 23c Free             │
+│  - Resource Limits: 4GB RAM, 2 CPUs     │
 │  - 3 Pentaho Schemas:                   │
 │    • jcr_user (JCR)                     │
 │    • pentaho_user (Scheduler)           │
@@ -312,17 +325,106 @@ Create a `.ignore` file in any directory to skip processing during startup.
 
 Named Docker volumes ensure data persists across container restarts:
 
+- `vault_data` - Vault data and unseal keys
 - `pentaho_oracle_data` - Oracle database files
 - `pentaho_solutions` - Pentaho solutions repository
 - `pentaho_data` - Pentaho data files
 
 ### Networking
 
-Bridge network `pentaho-net` (172.28.0.0/16) provides:
+Bridge network `pentaho-net` (172.29.0.0/16) provides:
 
 - Service discovery (containers can reach each other by hostname)
 - Network isolation from host
 - Custom subnet to avoid VPN conflicts
+
+## Vault and Secrets Management
+
+### Overview
+
+This deployment uses HashiCorp Vault for secure secrets management. Database credentials are stored in Vault rather than in plain text environment variables or configuration files.
+
+### Vault Architecture
+
+```
+┌─────────────────────────────────────────┐
+│  Vault Server (vault:8200)              │
+│  - File storage backend                 │
+│  - Auto-initialized on first start      │
+│  - KV v2 secrets engine                 │
+└─────────────────────────────────────────┘
+              │
+              ├── secret/data/pentaho/oracle
+              │   ├── oracle_password
+              │   ├── pentaho_user
+              │   ├── pentaho_password
+              │   └── jdbc_url
+              │
+              └── AppRole: pentaho
+                  └── Policy: pentaho-policy
+```
+
+### Secrets Storage
+
+Database credentials are stored at `secret/data/pentaho/oracle`:
+
+| Key | Description |
+|-----|-------------|
+| `oracle_password` | Oracle SYS/SYSTEM password |
+| `pentaho_user` | Pentaho database username |
+| `pentaho_password` | Pentaho database password |
+| `jdbc_url` | JDBC connection URL |
+
+### Accessing Vault
+
+```bash
+# Get Vault status
+docker compose exec vault vault status
+
+# View stored secrets (requires root token)
+docker compose exec vault vault kv get secret/pentaho/oracle
+
+# Get root token from vault-keys.json
+docker compose exec vault cat /vault/data/vault-keys.json | jq -r '.root_token'
+```
+
+### Docker Secrets Integration
+
+The deployment also uses Docker secrets for initial database passwords:
+
+```
+secrets/
+└── oracle_password.txt    # Oracle password
+```
+
+## Security Features
+
+### Resource Limits
+
+All containers have CPU and memory limits:
+
+| Service | Memory Limit | CPU Limit | Memory Reservation |
+|---------|-------------|-----------|-------------------|
+| Vault | 512MB | 0.5 | 256MB |
+| Oracle | 4GB | 2 | 2GB |
+| Pentaho | 10GB | 4 | 4GB |
+
+### Log Rotation
+
+All containers use JSON file logging with rotation:
+
+| Service | Max Size | Max Files | Total Max |
+|---------|----------|-----------|-----------|
+| Vault | 50MB | 3 | 150MB |
+| Oracle | 100MB | 5 | 500MB |
+| Pentaho | 200MB | 5 | 1GB |
+
+### Graceful Shutdown
+
+All services have appropriate stop_grace_period for clean shutdown:
+- Oracle: 120s (database needs time to flush)
+- Pentaho: 60s
+- Vault: default
 
 ## Database Management
 
@@ -748,6 +850,96 @@ Pentaho-Server-Oracle/
 
 ## Recent Changes
 
+### Version 1.3.0 (2026-01-16)
+
+**Clean Deployment Flow:**
+- On initial deployment, database users are created with the default password "password"
+- Vault stores the same default password to ensure Pentaho can connect immediately
+- After verifying the deployment works, run `./scripts/rotate-secrets.sh` to secure passwords
+- This change fixes connection failures that occurred when Vault generated random passwords on first start
+
+**Password Rotation Policy:**
+- Recommended rotation interval: every 90 days
+- The validation script now shows:
+  - Whether default or rotated passwords are in use
+  - Days since last rotation
+  - Next recommended rotation date
+- Passwords are NEVER rotated automatically - manual rotation ensures you control when restarts occur
+
+**Script Documentation:**
+- All scripts now include comprehensive header documentation
+- Each script explains its purpose, usage, and deployment flow
+- Added ASCII flow diagrams for visual understanding
+
+### Version 1.2.0 (2026-01-16)
+
+**Dynamic Password Generation:**
+- Database user passwords (jcr_user, pentaho_user, hibuser) are now automatically generated
+- Secure 24-character passwords with complexity requirements
+- Passwords persisted in `/vault/data/generated-passwords.json` for consistency across restarts
+- No more hardcoded default passwords for database users
+
+**Security Improvements:**
+- Root token and secrets no longer logged in plain text (masked output)
+- Vault secrets verification added to validation script
+- AppRole authentication tested during deployment validation
+- Validation script displays all stored secrets for verification
+- Vault automatically sealed after secrets verification (production best practice)
+
+**Reliability Enhancements:**
+- Retry logic with configurable attempts (30 retries, 2s interval) for Vault initialization
+- Better error handling and progress output during startup
+- Secrets verification confirms credentials are properly stored
+
+**Vault Backup & Restore:**
+- New `scripts/backup-vault.sh` - Creates timestamped backups of Vault credentials
+- New `scripts/restore-vault.sh` - Restores Vault from backup with confirmation
+- Backups include: vault-keys.json, approle-creds.json, generated-passwords.json
+
+**Usage:**
+```bash
+# Backup Vault credentials
+./scripts/backup-vault.sh
+
+# Restore from backup
+./scripts/restore-vault.sh backups/vault-backup-YYYYMMDD-HHMMSS.tar.gz
+```
+
+### Version 1.1.0 (2026-01-16)
+
+**Security Enhancements:**
+- Added HashiCorp Vault integration for secrets management
+- Database credentials now stored in Vault instead of plain text
+- AppRole authentication for Pentaho to retrieve secrets
+- Docker secrets integration for Oracle password
+
+**Resource Management:**
+- Added CPU and memory limits to all containers
+- Vault: 512MB RAM, 0.5 CPUs
+- Oracle: 4GB RAM, 2 CPUs
+- Pentaho: 10GB RAM (configurable), 4 CPUs
+
+**Reliability:**
+- Added JSON log driver with rotation to all containers
+- Oracle has 120s stop_grace_period for clean shutdown
+- Pentaho has 60s stop_grace_period
+- Increased health check retries for Pentaho startup
+- Added tmpfs for temporary directories
+
+**New Files:**
+- `vault/config/vault.hcl` - Vault server configuration
+- `vault/policies/pentaho-policy.hcl` - Access policy
+- `secrets/oracle_password.txt` - Docker secrets file
+- `scripts/vault-init.sh` - Vault initialization script
+- `scripts/fetch-secrets.sh` - Secret retrieval helper
+
+### Version 1.0.1 (2026-01-15)
+
+**Bug Fixes:**
+- Added `softwareOverride/4_others/tomcat/bin/startup.sh` to run Tomcat in foreground mode (required for Docker containers)
+- Fixed validation script container status check (`running` -> `Up`)
+- Fixed validation script to handle grep non-zero exit codes
+
 ### Version 1.0.0 (2026-01-13)
 
 **Docker Image Changes:**
@@ -778,9 +970,9 @@ docker compose logs --tail=100 pentaho-server
 
 ---
 
-**Project Version**: 1.0.0
+**Project Version**: 1.3.0
 **Pentaho Version**: 11.0.0.0-237
 **Oracle Version**: 23c Free
-**Last Updated**: 2026-01-13
+**Last Updated**: 2026-01-16
 
 For questions or issues with this deployment, refer to the Troubleshooting section or review the generated logs.

@@ -5,6 +5,9 @@
 -- OLTP logging tables for Pentaho Data Integration
 -- =============================================================================
 
+-- Connect to the pluggable database first
+ALTER SESSION SET CONTAINER = FREEPDB1;
+
 -- Connect as hibuser (owns logging tables)
 ALTER SESSION SET CURRENT_SCHEMA = hibuser;
 
