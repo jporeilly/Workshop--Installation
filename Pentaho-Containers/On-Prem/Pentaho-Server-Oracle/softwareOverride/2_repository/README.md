@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This directory contains configuration files for Pentaho's internal repositories and database connections. It configures how Pentaho connects to and uses MySQL for:
+This directory contains configuration files for Pentaho's internal repositories and database connections. It configures how Pentaho connects to and uses Oracle Database for:
 
 - **JackRabbit** - Content repository (reports, dashboards, data sources)
 - **Quartz** - Job scheduler
@@ -19,12 +19,10 @@ This directory is processed **second** during container startup, after JDBC driv
 ├── README.md                                    # This file
 ├── pentaho-solutions/
 │   └── system/
-│       ├── audit_sql.xml                        # Audit logging SQL queries
 │       ├── hibernate/
 │       │   └── hibernate-settings.xml           # Hibernate ORM configuration
 │       ├── jackrabbit/
 │       │   └── repository.xml                   # JCR repository settings
-│       ├── repository.spring.properties         # Repository Spring config
 │       └── scheduler-plugin/
 │           └── quartz/
 │               └── quartz.properties            # Job scheduler config
@@ -46,14 +44,14 @@ Defines JNDI datasources for database connections:
 ```xml
 <Resource name="jdbc/Hibernate"
           type="javax.sql.DataSource"
-          url="jdbc:mysql://repository:3306/hibernate"
+          url="jdbc:oracle:thin:@//repository:1521/FREEPDB1"
           username="hibuser"
           password="password"/>
 
 <Resource name="jdbc/Quartz"
           type="javax.sql.DataSource"
-          url="jdbc:mysql://repository:3306/quartz"
-          username="quartz_user"
+          url="jdbc:oracle:thin:@//repository:1521/FREEPDB1"
+          username="pentaho_user"
           password="password"/>
 ```
 
@@ -87,28 +85,29 @@ Configures Hibernate ORM for Pentaho metadata:
 
 ## JDBC Datasources
 
-| Resource Name | Database | User | Purpose |
-|---------------|----------|------|---------|
-| `jdbc/Hibernate` | hibernate | hibuser | Hibernate repository |
-| `jdbc/Audit` | hibernate | hibuser | Audit logging |
-| `jdbc/Quartz` | quartz | pentaho_user | Quartz scheduler |
-| `jdbc/PDI_Operations_Mart` | hibernate | hibuser | PDI operations mart |
-| `jdbc/pentaho_operations_mart` | hibernate | hibuser | Pentaho operations mart |
-| `jdbc/live_logging_info` | hibernate | hibuser | Live logging |
-| `jdbc/jackrabbit` | jackrabbit | jcr_user | JackRabbit content repository |
+| Resource Name | Database/Schema | User | Purpose |
+|---------------|-----------------|------|---------|
+| `jdbc/Hibernate` | FREEPDB1 | hibuser | Hibernate repository |
+| `jdbc/Audit` | FREEPDB1 | hibuser | Audit logging |
+| `jdbc/Quartz` | FREEPDB1 | pentaho_user | Quartz scheduler |
+| `jdbc/PDI_Operations_Mart` | FREEPDB1 | hibuser | PDI operations mart |
+| `jdbc/pentaho_operations_mart` | FREEPDB1 | hibuser | Pentaho operations mart |
+| `jdbc/live_logging_info` | FREEPDB1 | hibuser | Live logging |
+| `jdbc/jackrabbit` | FREEPDB1 | jcr_user | JackRabbit content repository |
 | `jdbc/SampleData` | sampledata | sa | Sample data (HSQLDB) |
 
-## MySQL-specific Settings
+## Oracle-specific Settings
 
 | Setting | Value |
 |---------|-------|
-| JDBC Driver | `com.mysql.jdbc.Driver` |
-| Default Port | `3306` |
+| JDBC Driver | `oracle.jdbc.OracleDriver` |
+| Default Port | `1521` |
 | Database Host | `repository` (container name) |
-| Quartz delegate | `org.quartz.impl.jdbcjobstore.StdJDBCDelegate` |
+| Service Name | `FREEPDB1` |
+| Quartz delegate | `org.quartz.impl.jdbcjobstore.oracle.OracleDelegate` |
 | Quartz table prefix | `QRTZ6_` |
-| Hibernate config | `mysql5.hibernate.cfg.xml` |
-| Validation query | `select 1` |
+| Hibernate config | `oracle10g.hibernate.cfg.xml` |
+| Validation query | `SELECT 1 FROM DUAL` |
 
 ## Connection Pool Settings
 
@@ -135,25 +134,49 @@ Configured in `repository.spring.properties`:
 
 ## Connection String Format
 
+Oracle thin client format:
 ```
-jdbc:mysql://repository:3306/<database>
+jdbc:oracle:thin:@//repository:1521/FREEPDB1
 ```
+
+Alternative SID format:
+```
+jdbc:oracle:thin:@repository:1521:ORCL
+```
+
+## Oracle Architecture Notes
+
+This configuration uses Oracle Free (23ai) with a Pluggable Database (PDB):
+- **Container Database (CDB):** FREE
+- **Pluggable Database (PDB):** FREEPDB1
+- All Pentaho schemas are created within the same PDB
+- Each user (hibuser, pentaho_user, jcr_user) has its own schema
 
 ## Customization
 
 ### Changing Database Passwords
 
-1. Update SQL initialization scripts in `db_init_mysql/`
+1. Update SQL initialization scripts in `db_init_oracle/`
 2. Update `context.xml` with new passwords
-3. Recreate MySQL volume and restart:
+3. Recreate Oracle volume and restart:
    ```bash
    docker compose down -v
    docker compose up -d
    ```
 
+### Using Different Service Name
+
+If using a different Oracle service name:
+
+1. Update all JDBC URLs in `context.xml`:
+   ```
+   jdbc:oracle:thin:@//repository:1521/YOUR_SERVICE_NAME
+   ```
+2. Update `repository.xml` and other config files accordingly
+
 ### Using Different Database
 
-To use PostgreSQL instead of MySQL:
+To use PostgreSQL instead of Oracle:
 
 1. Add PostgreSQL driver to `1_drivers/tomcat/lib/`
 2. Update `context.xml` with PostgreSQL JDBC URL
@@ -165,29 +188,56 @@ To use PostgreSQL instead of MySQL:
 ### Connection Refused
 
 ```
-Communications link failure - Connection refused
+IO Error: The Network Adapter could not establish the connection
 ```
 
-**Cause:** MySQL not ready or incorrect hostname
-**Solution:** Verify MySQL container is healthy: `docker compose ps mysql`
+**Cause:** Oracle not ready or incorrect hostname
+**Solution:** Verify Oracle container is healthy: `docker compose ps`
 
-### Unknown Database
-
-```
-Unknown database 'hibernate'
-```
-
-**Cause:** Database initialization scripts didn't run
-**Solution:** Recreate MySQL volume: `docker compose down -v && docker compose up -d mysql`
-
-### Access Denied
+### Invalid Service Name
 
 ```
-Access denied for user 'hibuser'@'%'
+ORA-12514: TNS:listener does not currently know of service requested
+```
+
+**Cause:** Service name mismatch
+**Solution:** Verify service name is `FREEPDB1` and Oracle listener is running
+
+### Login Failed
+
+```
+ORA-01017: invalid username/password; logon denied
 ```
 
 **Cause:** Password mismatch between context.xml and database
-**Solution:** Verify passwords match in `context.xml` and `db_init_mysql/*.sql`
+**Solution:** Verify passwords match in `context.xml` and database init scripts
+
+### Tablespace Issues
+
+```
+ORA-01653: unable to extend table
+```
+
+**Cause:** Insufficient tablespace
+**Solution:** Extend the tablespace or configure auto-extend
+
+### Quartz Errors
+
+```
+ORA-00942: table or view does not exist (QRTZ6_LOCKS)
+```
+
+**Cause:** Quartz tables not created
+**Solution:** Verify `QRTZ6_*` tables exist in the pentaho_user schema
+
+### Container Networking
+
+**Cause:** Pentaho and Oracle not on the same Docker network
+**Solution:** Ensure both containers are defined in the same `docker-compose.yml`
+
+### Oracle Startup Time
+
+**Note:** Oracle containers take longer to start than other databases. Wait for the healthcheck to pass before starting Pentaho.
 
 ## Related Documentation
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This directory contains configuration files for Pentaho's internal repositories and database connections. It configures how Pentaho connects to and uses MySQL for:
+This directory contains configuration files for Pentaho's internal repositories and database connections. It configures how Pentaho connects to and uses Microsoft SQL Server for:
 
 - **JackRabbit** - Content repository (reports, dashboards, data sources)
 - **Quartz** - Job scheduler
@@ -46,14 +46,14 @@ Defines JNDI datasources for database connections:
 ```xml
 <Resource name="jdbc/Hibernate"
           type="javax.sql.DataSource"
-          url="jdbc:mysql://repository:3306/hibernate"
+          url="jdbc:sqlserver://repository:1433;databaseName=hibernate;encrypt=false;trustServerCertificate=true"
           username="hibuser"
           password="password"/>
 
 <Resource name="jdbc/Quartz"
           type="javax.sql.DataSource"
-          url="jdbc:mysql://repository:3306/quartz"
-          username="quartz_user"
+          url="jdbc:sqlserver://repository:1433;databaseName=quartz;encrypt=false;trustServerCertificate=true"
+          username="pentaho_user"
           password="password"/>
 ```
 
@@ -94,21 +94,22 @@ Configures Hibernate ORM for Pentaho metadata:
 | `jdbc/Quartz` | quartz | pentaho_user | Quartz scheduler |
 | `jdbc/PDI_Operations_Mart` | hibernate | hibuser | PDI operations mart |
 | `jdbc/pentaho_operations_mart` | hibernate | hibuser | Pentaho operations mart |
-| `jdbc/live_logging_info` | hibernate | hibuser | Live logging |
+| `jdbc/live_logging_info` | pentaho_dilogs | hibuser | Live logging |
 | `jdbc/jackrabbit` | jackrabbit | jcr_user | JackRabbit content repository |
 | `jdbc/SampleData` | sampledata | sa | Sample data (HSQLDB) |
 
-## MySQL-specific Settings
+## SQL Server-specific Settings
 
 | Setting | Value |
 |---------|-------|
-| JDBC Driver | `com.mysql.jdbc.Driver` |
-| Default Port | `3306` |
+| JDBC Driver | `com.microsoft.sqlserver.jdbc.SQLServerDriver` |
+| Default Port | `1433` |
 | Database Host | `repository` (container name) |
-| Quartz delegate | `org.quartz.impl.jdbcjobstore.StdJDBCDelegate` |
+| Quartz delegate | `org.quartz.impl.jdbcjobstore.MSSQLDelegate` |
 | Quartz table prefix | `QRTZ6_` |
-| Hibernate config | `mysql5.hibernate.cfg.xml` |
+| Hibernate config | `sqlserver.hibernate.cfg.xml` |
 | Validation query | `select 1` |
+| Encryption | `encrypt=false;trustServerCertificate=true` |
 
 ## Connection Pool Settings
 
@@ -136,24 +137,35 @@ Configured in `repository.spring.properties`:
 ## Connection String Format
 
 ```
-jdbc:mysql://repository:3306/<database>
+jdbc:sqlserver://repository:1433;databaseName=<database>;encrypt=false;trustServerCertificate=true
 ```
 
 ## Customization
 
 ### Changing Database Passwords
 
-1. Update SQL initialization scripts in `db_init_mysql/`
+1. Update SQL initialization scripts in `db_init_mssql/`
 2. Update `context.xml` with new passwords
-3. Recreate MySQL volume and restart:
+3. Recreate SQL Server volume and restart:
    ```bash
    docker compose down -v
    docker compose up -d
    ```
 
+### Enabling Encryption
+
+To enable encrypted connections:
+
+1. Configure SQL Server with a valid certificate
+2. Update connection URLs in `context.xml`:
+   ```
+   encrypt=true;trustServerCertificate=false
+   ```
+3. Import the server certificate into the Java truststore
+
 ### Using Different Database
 
-To use PostgreSQL instead of MySQL:
+To use PostgreSQL instead of SQL Server:
 
 1. Add PostgreSQL driver to `1_drivers/tomcat/lib/`
 2. Update `context.xml` with PostgreSQL JDBC URL
@@ -165,29 +177,52 @@ To use PostgreSQL instead of MySQL:
 ### Connection Refused
 
 ```
-Communications link failure - Connection refused
+The TCP/IP connection to the host repository, port 1433 has failed
 ```
 
-**Cause:** MySQL not ready or incorrect hostname
-**Solution:** Verify MySQL container is healthy: `docker compose ps mysql`
+**Cause:** SQL Server not ready or incorrect hostname
+**Solution:** Verify SQL Server container is healthy: `docker compose ps`
 
 ### Unknown Database
 
 ```
-Unknown database 'hibernate'
+Cannot open database "hibernate" requested by the login
 ```
 
 **Cause:** Database initialization scripts didn't run
-**Solution:** Recreate MySQL volume: `docker compose down -v && docker compose up -d mysql`
+**Solution:** Recreate SQL Server volume: `docker compose down -v && docker compose up -d`
 
-### Access Denied
+### Login Failed
 
 ```
-Access denied for user 'hibuser'@'%'
+Login failed for user 'hibuser'
 ```
 
 **Cause:** Password mismatch between context.xml and database
-**Solution:** Verify passwords match in `context.xml` and `db_init_mysql/*.sql`
+**Solution:** Verify passwords match in `context.xml` and database init scripts
+
+### Quartz Errors
+
+```
+Invalid object name 'QRTZ6_LOCKS'
+```
+
+**Cause:** Quartz tables not created
+**Solution:** Verify `QRTZ6_*` tables exist in the `quartz` database
+
+### SSL/TLS Errors
+
+```
+The driver could not establish a secure connection to SQL Server
+```
+
+**Cause:** Encryption settings mismatch
+**Solution:** Ensure `encrypt=false;trustServerCertificate=true` in connection URLs for non-SSL connections
+
+### Container Networking
+
+**Cause:** Pentaho and SQL Server not on the same Docker network
+**Solution:** Ensure both containers are defined in the same `docker-compose.yml`
 
 ## Related Documentation
 
