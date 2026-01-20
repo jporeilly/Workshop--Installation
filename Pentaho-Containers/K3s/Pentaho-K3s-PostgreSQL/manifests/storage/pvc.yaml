@@ -1,0 +1,60 @@
+# =============================================================================
+# PersistentVolumeClaims for Pentaho Platform
+# =============================================================================
+# Storage for PostgreSQL and Pentaho Server data persistence
+# Uses K3s default local-path provisioner
+# =============================================================================
+
+---
+# PostgreSQL Data Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data-pvc
+  namespace: pentaho
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Pentaho Data Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pentaho-data-pvc
+  namespace: pentaho
+  labels:
+    app.kubernetes.io/name: pentaho
+    app.kubernetes.io/component: data-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Pentaho Solutions Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pentaho-solutions-pvc
+  namespace: pentaho
+  labels:
+    app.kubernetes.io/name: pentaho
+    app.kubernetes.io/component: solutions-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi

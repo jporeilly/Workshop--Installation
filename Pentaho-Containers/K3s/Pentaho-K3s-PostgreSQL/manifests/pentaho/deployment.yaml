@@ -1,0 +1,118 @@
+# =============================================================================
+# Pentaho Server Deployment
+# =============================================================================
+# Pentaho Server 11.0.0.0-237 Enterprise Edition
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pentaho-server
+  namespace: pentaho
+  labels:
+    app.kubernetes.io/name: pentaho
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: pentaho-platform
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Required for persistent volumes
+  selector:
+    matchLabels:
+      app: pentaho-server
+  template:
+    metadata:
+      labels:
+        app: pentaho-server
+        app.kubernetes.io/name: pentaho
+    spec:
+      # Wait for postgres to be ready
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL to be ready..."
+              until nc -z postgres 5432; do
+                echo "PostgreSQL is not ready - sleeping"
+                sleep 2
+              done
+              echo "PostgreSQL is ready!"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+      containers:
+        - name: pentaho-server
+          # Update this image reference based on your setup:
+          # - Local build: pentaho/pentaho-server:11.0.0.0-237
+          # - Registry: your-registry.com/pentaho/pentaho-server:11.0.0.0-237
+          image: pentaho/pentaho-server:11.0.0.0-237
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8443
+              name: https
+          envFrom:
+            - configMapRef:
+                name: pentaho-config
+          env:
+            # Database credentials from secrets
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: postgres-password
+          volumeMounts:
+            - name: pentaho-data
+              mountPath: /opt/pentaho/pentaho-server/data
+            - name: pentaho-solutions
+              mountPath: /opt/pentaho/pentaho-server/pentaho-solutions
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1"
+            limits:
+              memory: "6Gi"
+              cpu: "4"
+          # Pentaho takes time to start - use longer initial delay
+          livenessProbe:
+            httpGet:
+              path: /pentaho/Login
+              port: 8080
+            initialDelaySeconds: 300
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /pentaho/Login
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
+          startupProbe:
+            httpGet:
+              path: /pentaho/Login
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30  # Allow up to 5 minutes for startup
+      volumes:
+        - name: pentaho-data
+          persistentVolumeClaim:
+            claimName: pentaho-data-pvc
+        - name: pentaho-solutions
+          persistentVolumeClaim:
+            claimName: pentaho-solutions-pvc
+      # Optional: If using a private registry
+      # imagePullSecrets:
+      #   - name: registry-credentials

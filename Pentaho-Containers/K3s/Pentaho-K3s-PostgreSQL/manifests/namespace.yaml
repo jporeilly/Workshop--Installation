@@ -1,0 +1,14 @@
+# =============================================================================
+# Pentaho Namespace
+# =============================================================================
+# Creates an isolated namespace for all Pentaho-related resources
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pentaho
+  labels:
+    app.kubernetes.io/name: pentaho
+    app.kubernetes.io/component: namespace
+    app.kubernetes.io/part-of: pentaho-platform

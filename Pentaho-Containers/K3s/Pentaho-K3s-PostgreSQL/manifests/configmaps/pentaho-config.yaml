@@ -1,0 +1,30 @@
+# =============================================================================
+# Pentaho Server ConfigMap
+# =============================================================================
+# Environment configuration for Pentaho Server
+# =============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pentaho-config
+  namespace: pentaho
+  labels:
+    app.kubernetes.io/name: pentaho
+    app.kubernetes.io/component: config
+data:
+  # JVM Memory Settings
+  PENTAHO_MIN_MEMORY: "2048m"
+  PENTAHO_MAX_MEMORY: "4096m"
+
+  # Database Configuration
+  DB_TYPE: "postgres"
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+
+  # Pentaho Paths
+  PENTAHO_SERVER_PATH: "/opt/pentaho/pentaho-server"
+  INSTALLATION_PATH: "/opt/pentaho"
+
+  # Timezone
+  TZ: "America/New_York"

@@ -1,0 +1,56 @@
+# =============================================================================
+# Pentaho Ingress
+# =============================================================================
+# Traefik Ingress for external access to Pentaho Server
+# K3s includes Traefik by default
+# =============================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pentaho-ingress
+  namespace: pentaho
+  labels:
+    app.kubernetes.io/name: pentaho
+    app.kubernetes.io/component: ingress
+  annotations:
+    # Traefik annotations
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    # Uncomment for HTTPS redirect
+    # traefik.ingress.kubernetes.io/router.middlewares: pentaho-redirect-https@kubernetescrd
+
+    # For larger file uploads (reports, etc.)
+    traefik.ingress.kubernetes.io/buffering: "true"
+
+    # CORS settings if needed
+    # traefik.ingress.kubernetes.io/headers.accesscontrolallowmethods: "GET,OPTIONS,PUT,POST,DELETE"
+    # traefik.ingress.kubernetes.io/headers.accesscontrolalloworigin: "*"
+spec:
+  ingressClassName: traefik
+  rules:
+    # Access via hostname
+    - host: pentaho.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pentaho-server
+                port:
+                  number: 8080
+    # Also allow access without hostname (direct IP)
+    - http:
+        paths:
+          - path: /pentaho
+            pathType: Prefix
+            backend:
+              service:
+                name: pentaho-server
+                port:
+                  number: 8080
+  # Uncomment to enable TLS
+  # tls:
+  #   - hosts:
+  #       - pentaho.local
+  #     secretName: pentaho-tls-secret

@@ -1,0 +1,19 @@
+# Secrets (never commit actual secrets)
+manifests/secrets/secrets.yaml
+
+# Backups
+backups/*.sql
+backups/*.sql.gz
+backups/*.tar.gz
+
+# Local config
+.env
+*.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
