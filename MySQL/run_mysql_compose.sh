@@ -31,16 +31,16 @@ echo "Docker found: $DOCKER_VERSION"
 
 # Check if docker-compose is available (try both syntaxes)
 COMPOSE_COMMAND=""
-if command -v docker-compose &> /dev/null; then
+if docker compose version &> /dev/null; then
+    COMPOSE_VERSION=$(docker compose version 2>/dev/null)
+    COMPOSE_COMMAND="docker compose"
+    echo "Docker Compose found: $COMPOSE_VERSION"
+elif command -v docker-compose &> /dev/null; then
     COMPOSE_VERSION=$(docker-compose --version 2>/dev/null)
     if [ $? -eq 0 ]; then
         COMPOSE_COMMAND="docker-compose"
         echo "Docker Compose found: $COMPOSE_VERSION"
     fi
-elif docker compose version &> /dev/null; then
-    COMPOSE_VERSION=$(docker compose version 2>/dev/null)
-    COMPOSE_COMMAND="docker compose"
-    echo "Docker Compose found: $COMPOSE_VERSION"
 fi
 
 if [ -z "$COMPOSE_COMMAND" ]; then
