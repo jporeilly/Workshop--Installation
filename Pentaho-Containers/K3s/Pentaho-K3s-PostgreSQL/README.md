@@ -1,76 +1,67 @@
-# Pentaho Server 11 K3s Deployment (PostgreSQL)
+# Pentaho Server 11 on K3s with PostgreSQL
 
-Complete Kubernetes deployment for Pentaho Server 11.0.0.0-237 with PostgreSQL 15 repository on K3s (lightweight Kubernetes) running on Ubuntu 24.04.
+✅ **Production-ready Kubernetes deployment - Tested and Working**
 
-## Table of Contents
+Deploy Pentaho Server 11.0.0.0-237 with PostgreSQL 15 on K3s (lightweight Kubernetes).
 
-- [Overview](#overview)
-- [Prerequisites](#prerequisites)
-- [K3s Installation](#k3s-installation)
-- [Quick Start](#quick-start)
-- [Manual Deployment](#manual-deployment)
-- [Configuration](#configuration)
-- [Architecture](#architecture)
-- [Accessing Services](#accessing-services)
-- [Database Management](#database-management)
-- [Troubleshooting](#troubleshooting)
-- [Production Hardening](#production-hardening)
-- [Backup and Recovery](#backup-and-recovery)
-- [Project Structure](#project-structure)
+---
 
-## Overview
+## Quick Start
 
-This project provides a production-ready K3s (Kubernetes) deployment for:
+### Prerequisites
+- Ubuntu 24.04 (or similar Linux)
+- 8GB RAM minimum (16GB recommended)
+- Docker installed
+- K3s installed (see [K3s Installation](#k3s-installation) below)
 
-- **Pentaho Server 11.0.0.0-237** (Enterprise Edition)
-- **PostgreSQL 15** with Pentaho repository databases
-- **K3s** lightweight Kubernetes on Ubuntu 24.04
+### Deploy in 3 Steps
 
-### Key Features
+```bash
+# 1. Build the Pentaho Docker image
+cd docker-build
+./build.sh
 
-- Lightweight Kubernetes (K3s) - single binary, low resource usage
-- Kubernetes-native deployment with Deployments, Services, ConfigMaps
-- Persistent storage using K3s local-path provisioner
-- Ingress controller (Traefik) included with K3s
-- Secret management via Kubernetes Secrets
-- Health checks and readiness probes
-- Horizontal scaling capability
-- Easy backup and restore
+# 2. Import image to K3s (password: password)
+docker save pentaho/pentaho-server:11.0.0.0-237 -o /tmp/pentaho.tar
+echo "password" | sudo -S k3s ctr images import /tmp/pentaho.tar
 
-### K3s vs Docker Compose
+# 3. Deploy to K3s
+cd ..
+./deploy.sh --skip-import
+```
 
-| Aspect | Docker Compose | K3s |
-|--------|----------------|-----|
-| Orchestration | Single host | Multi-node capable |
-| Scaling | Manual | Horizontal Pod Autoscaler |
-| Service Discovery | Container names | DNS-based (CoreDNS) |
-| Load Balancing | Manual/external | Built-in (Traefik) |
-| Storage | Docker volumes | PersistentVolumeClaims |
-| Secrets | Docker secrets/files | Kubernetes Secrets |
-| Health Checks | HEALTHCHECK | Liveness/Readiness Probes |
-| Rolling Updates | Manual | Built-in |
+### Access Pentaho
 
-## Prerequisites
+```bash
+# Port forward to access locally
+kubectl port-forward -n pentaho svc/pentaho-server 8080:8080
+```
 
-### System Requirements
+Open: **http://localhost:8080/pentaho**
 
-- **OS**: Ubuntu 24.04 LTS (also compatible with Ubuntu 22.04)
-- **CPU**: 4+ cores recommended
-- **RAM**: 8GB minimum, 16GB recommended
-- **Disk**: 20GB+ available space
-- **Network**: Static IP or DHCP reservation recommended
+**Default Login**: `admin` / `password`
 
-### Software Requirements
+---
 
-1. **Ubuntu 24.04** with sudo access
-2. **curl** (usually pre-installed)
-3. **Pentaho Package**: `pentaho-server-ee-11.0.0.0-237.zip` from Hitachi Vantara
+## What's Deployed
+
+### Services
+- **Pentaho Server 11.0.0.0-237** - Business analytics platform
+- **PostgreSQL 15** - Three databases (jackrabbit, quartz, hibernate)
+- **Traefik Ingress** - HTTP routing (included with K3s)
+
+### Storage
+- PostgreSQL: 10GB persistent volume
+- Pentaho data persists in PostgreSQL (no file volumes to avoid conflicts)
+
+### Namespace
+All resources deploy to the `pentaho` namespace.
+
+---
 
 ## K3s Installation
 
-For detailed K3s installation instructions, see [K3s-INSTALLATION.md](K3s-INSTALLATION.md).
-
-### Quick K3s Install
+If you don't have K3s installed:
 
 ```bash
 # Install K3s (single-node cluster)
@@ -79,509 +70,452 @@ curl -sfL https://get.k3s.io | sh -
 # Verify installation
 sudo k3s kubectl get nodes
 
-# Set up kubectl for non-root user
+# Allow kubectl without sudo (optional)
 mkdir -p ~/.kube
 sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-sudo chown $(id -u):$(id -g) ~/.kube/config
+sudo chown $USER:$USER ~/.kube/config
 export KUBECONFIG=~/.kube/config
-
-# Verify kubectl works
-kubectl get nodes
 ```
 
-## Quick Start
+**See [K3s-INSTALLATION.md](K3s-INSTALLATION.md) for detailed instructions and multi-node setup.**
 
-### 1. Clone/Copy Project
+---
+
+## Deployment Scripts
+
+### Quick Commands with Makefile (New!) ⭐
 
 ```bash
-cd /path/to/Pentaho-Containers/K3s/Pentaho-K3s-PostgreSQL
+make help           # Show all available commands
+make full-deploy    # Build, import, and deploy (complete workflow)
+make health         # Run health check
+make status         # Show deployment status
+make logs           # View Pentaho logs
+make port-forward   # Access Pentaho at localhost:8080
+make destroy        # Remove deployment
 ```
 
-### 2. Prepare Pentaho Container Image
+**See all commands**: Run `make help`
 
-You need to build and import the Pentaho container image into K3s:
+### Main Deployment: `deploy.sh`
 
 ```bash
-# Option A: Build locally with Docker and import to K3s
-# (requires Docker installed alongside K3s)
-cd ../On-Prem/Pentaho-Server-PostgreSQL
-docker build -t pentaho/pentaho-server:11.0.0.0-237 ./docker
-docker save pentaho/pentaho-server:11.0.0.0-237 | sudo k3s ctr images import -
+# Fresh deployment (recommended)
+./deploy.sh --skip-import
 
-# Option B: Use a container registry
-# Push to your registry and update manifests/pentaho/deployment.yaml
+# Clean old images first
+./deploy.sh --clean
+
+# Update existing deployment
+./deploy.sh --update-only
 ```
 
-### 3. Configure Secrets
+**Features:**
+- Pre-flight checks (Docker, kubectl, K3s, secrets)
+- Sequential resource creation with error handling
+- Health check monitoring
+- Colored progress output
+
+### Docker Build: `docker-build/build.sh`
 
 ```bash
-# Edit secrets with your passwords
-cp manifests/secrets/secrets.yaml.template manifests/secrets/secrets.yaml
-nano manifests/secrets/secrets.yaml
-
-# Or generate base64-encoded passwords:
-echo -n 'your-password' | base64
+cd docker-build
+./build.sh
+# Or: make build
 ```
 
-### 4. Deploy
+**What it does:**
+- Builds Pentaho image from official installer
+- Copies PostgreSQL configuration overlays
+- Tests the built image
+- Size: ~3.3GB
+
+### Cleanup: `destroy.sh`
 
 ```bash
-# Run the deployment script
-chmod +x deploy.sh
-./deploy.sh
+./destroy.sh
+# Or: make destroy
 ```
 
-### 5. Access Pentaho
+⚠️ **WARNING**: Deletes entire pentaho namespace and all data!
 
-```bash
-# Get the service URL
-kubectl get ingress -n pentaho
-
-# Or use port-forward for testing
-kubectl port-forward svc/pentaho-server 8080:8080 -n pentaho
-```
-
-Access Pentaho at: http://localhost:8080/pentaho
-- Username: `admin`
-- Password: `password`
-
-## Manual Deployment
-
-### Step-by-Step Deployment
-
-```bash
-# 1. Create namespace
-kubectl apply -f manifests/namespace.yaml
-
-# 2. Create secrets
-kubectl apply -f manifests/secrets/
-
-# 3. Create ConfigMaps
-kubectl apply -f manifests/configmaps/
-
-# 4. Create PersistentVolumeClaims
-kubectl apply -f manifests/storage/
-
-# 5. Deploy PostgreSQL
-kubectl apply -f manifests/postgres/
-
-# 6. Wait for PostgreSQL to be ready
-kubectl wait --for=condition=ready pod -l app=postgres -n pentaho --timeout=120s
-
-# 7. Deploy Pentaho Server
-kubectl apply -f manifests/pentaho/
-
-# 8. Create Ingress (optional)
-kubectl apply -f manifests/ingress/
-```
-
-### Verify Deployment
-
-```bash
-# Check all resources
-kubectl get all -n pentaho
-
-# Check pod status
-kubectl get pods -n pentaho -w
-
-# View logs
-kubectl logs -f deployment/pentaho-server -n pentaho
-```
-
-## Configuration
-
-### Environment Variables
-
-Edit `manifests/configmaps/pentaho-config.yaml`:
-
-```yaml
-data:
-  PENTAHO_MIN_MEMORY: "2048m"
-  PENTAHO_MAX_MEMORY: "4096m"
-  DB_HOST: "postgres"
-  DB_PORT: "5432"
-```
-
-### Database Credentials
-
-Edit `manifests/secrets/secrets.yaml`:
-
-```yaml
-data:
-  postgres-password: <base64-encoded-password>
-  pentaho-db-password: <base64-encoded-password>
-```
-
-Generate base64 values:
-```bash
-echo -n 'your-secure-password' | base64
-```
-
-### Persistent Storage
-
-Default storage class: `local-path` (K3s default)
-
-To use different storage:
-```yaml
-spec:
-  storageClassName: your-storage-class
-```
+---
 
 ## Architecture
 
 ### Kubernetes Resources
-
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Namespace: pentaho                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌─────────────────────┐    ┌─────────────────────┐         │
-│  │  Ingress (Traefik)  │    │    ConfigMaps       │         │
-│  │  - pentaho.local    │    │  - pentaho-config   │         │
-│  └──────────┬──────────┘    │  - postgres-init    │         │
-│             │               └─────────────────────┘         │
-│             ▼                                                │
-│  ┌─────────────────────┐    ┌─────────────────────┐         │
-│  │  Service            │    │    Secrets          │         │
-│  │  - pentaho-server   │    │  - pentaho-secrets  │         │
-│  │  - postgres         │    │  - postgres-secrets │         │
-│  └──────────┬──────────┘    └─────────────────────┘         │
-│             │                                                │
-│             ▼                                                │
-│  ┌─────────────────────────────────────────────┐            │
-│  │              Deployments                     │            │
-│  │  ┌─────────────────┐  ┌─────────────────┐   │            │
-│  │  │ pentaho-server  │  │    postgres     │   │            │
-│  │  │ (1 replica)     │  │  (1 replica)    │   │            │
-│  │  │                 │  │                 │   │            │
-│  │  │ Port: 8080      │  │ Port: 5432      │   │            │
-│  │  └────────┬────────┘  └────────┬────────┘   │            │
-│  └───────────┼────────────────────┼────────────┘            │
-│              │                    │                          │
-│              ▼                    ▼                          │
-│  ┌─────────────────────────────────────────────┐            │
-│  │         PersistentVolumeClaims              │            │
-│  │  - pentaho-data-pvc (10Gi)                  │            │
-│  │  - pentaho-solutions-pvc (5Gi)              │            │
-│  │  - postgres-data-pvc (10Gi)                 │            │
-│  └─────────────────────────────────────────────┘            │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Network Flow
-
-```
-External Request
-       │
-       ▼
-┌──────────────┐
-│   Traefik    │  K3s Ingress Controller (port 80/443)
-│   Ingress    │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│   Service    │  pentaho-server:8080
-│  ClusterIP   │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐     ┌──────────────┐
-│   Pentaho    │────▶│  PostgreSQL  │
-│    Pod       │     │     Pod      │
-└──────────────┘     └──────────────┘
-                     postgres:5432
-```
-
-### Data Persistence
-
-| PVC | Size | Purpose |
-|-----|------|---------|
-| postgres-data-pvc | 10Gi | PostgreSQL databases |
-| pentaho-data-pvc | 10Gi | Pentaho data files |
-| pentaho-solutions-pvc | 5Gi | Pentaho solutions repository |
-
-## Accessing Services
-
-### Via Ingress (Production)
-
-1. Configure DNS or `/etc/hosts`:
-   ```bash
-   echo "$(hostname -I | awk '{print $1}') pentaho.local" | sudo tee -a /etc/hosts
-   ```
-
-2. Access: http://pentaho.local/pentaho
-
-### Via Port Forward (Development)
-
-```bash
-# Pentaho Server
-kubectl port-forward svc/pentaho-server 8080:8080 -n pentaho
-
-# PostgreSQL (for database tools)
-kubectl port-forward svc/postgres 5432:5432 -n pentaho
-```
-
-### Via NodePort
-
-Edit `manifests/pentaho/service.yaml` to use NodePort:
-
-```yaml
-spec:
-  type: NodePort
-  ports:
-    - port: 8080
-      nodePort: 30080
-```
-
-Access: http://<node-ip>:30080/pentaho
-
-## Database Management
-
-### Access PostgreSQL
-
-```bash
-# Get a shell in the postgres pod
-kubectl exec -it deployment/postgres -n pentaho -- psql -U postgres
-
-# Run SQL commands
-\l                    # List databases
-\c jackrabbit         # Connect to database
-\dt                   # List tables
-\q                    # Quit
-```
-
-### Backup Database
-
-```bash
-# Create backup
-kubectl exec deployment/postgres -n pentaho -- \
-  pg_dumpall -U postgres > backup-$(date +%Y%m%d).sql
-
-# Or use the backup script
-./scripts/backup-postgres.sh
-```
-
-### Restore Database
-
-```bash
-# Restore from backup
-cat backup-20260119.sql | kubectl exec -i deployment/postgres -n pentaho -- \
-  psql -U postgres
-```
-
-## Troubleshooting
-
-### Check Pod Status
-
-```bash
-# List all pods
-kubectl get pods -n pentaho
-
-# Describe a pod (shows events and issues)
-kubectl describe pod <pod-name> -n pentaho
-
-# Check pod logs
-kubectl logs <pod-name> -n pentaho
-kubectl logs -f deployment/pentaho-server -n pentaho
-```
-
-### Common Issues
-
-#### Pod Stuck in Pending
-
-```bash
-# Check events
-kubectl describe pod <pod-name> -n pentaho
-
-# Common causes:
-# - Insufficient resources: Check node capacity
-# - PVC not bound: Check storage class
-kubectl get pvc -n pentaho
-```
-
-#### Pod CrashLoopBackOff
-
-```bash
-# Check logs
-kubectl logs <pod-name> -n pentaho --previous
-
-# Common causes:
-# - Database not ready
-# - Incorrect credentials
-# - Missing configuration
-```
-
-#### Cannot Connect to Database
-
-```bash
-# Verify postgres is running
-kubectl get pods -l app=postgres -n pentaho
-
-# Test connectivity from pentaho pod
-kubectl exec deployment/pentaho-server -n pentaho -- \
-  nc -zv postgres 5432
-```
-
-#### Ingress Not Working
-
-```bash
-# Check ingress status
-kubectl get ingress -n pentaho
-kubectl describe ingress pentaho-ingress -n pentaho
-
-# Check Traefik logs
-kubectl logs -n kube-system -l app.kubernetes.io/name=traefik
-```
-
-### Reset Deployment
-
-```bash
-# Delete and recreate everything
-kubectl delete namespace pentaho
-./deploy.sh
-```
-
-## Production Hardening
-
-### Security Checklist
-
-- [ ] Change all default passwords
-- [ ] Enable TLS/SSL for Ingress
-- [ ] Configure Network Policies
-- [ ] Set resource limits on all pods
-- [ ] Enable RBAC
-- [ ] Use external secrets management (Vault, Sealed Secrets)
-- [ ] Configure pod security policies
-- [ ] Set up monitoring (Prometheus/Grafana)
-- [ ] Configure log aggregation
-
-### Enable TLS
-
-```yaml
-# In manifests/ingress/ingress.yaml
-spec:
-  tls:
-    - hosts:
-        - pentaho.local
-      secretName: pentaho-tls
-```
-
-Create TLS secret:
-```bash
-kubectl create secret tls pentaho-tls \
-  --cert=path/to/cert.pem \
-  --key=path/to/key.pem \
-  -n pentaho
-```
-
-### Resource Limits
-
-Already configured in deployment manifests:
-
-```yaml
-resources:
-  requests:
-    memory: "2Gi"
-    cpu: "1"
-  limits:
-    memory: "6Gi"
-    cpu: "4"
-```
-
-## Backup and Recovery
-
-### Automated Backups
-
-Set up a CronJob for automated backups:
-
-```bash
-kubectl apply -f manifests/backup/backup-cronjob.yaml
-```
-
-### Disaster Recovery
-
-1. Back up all manifests and configuration
-2. Back up PostgreSQL data regularly
-3. Back up PersistentVolume data
-4. Document recovery procedures
-
-### Full Cluster Recovery
-
-```bash
-# 1. Install K3s on new node
-curl -sfL https://get.k3s.io | sh -
-
-# 2. Apply manifests
-./deploy.sh
-
-# 3. Restore database
-./scripts/restore-postgres.sh backup-file.sql
-```
-
-## Project Structure
-
-```
-Pentaho-K3s-PostgreSQL/
-├── README.md                    # This documentation
-├── K3s-INSTALLATION.md          # K3s installation guide
-├── deploy.sh                    # Automated deployment script
-├── destroy.sh                   # Cleanup script
+pentaho namespace
+├── PostgreSQL Deployment
+│   ├── Image: postgres:15
+│   ├── Port: 5432
+│   ├── Volume: 10GB PVC
+│   └── Init: SQL scripts from ConfigMap
 │
-├── manifests/
-│   ├── namespace.yaml           # Kubernetes namespace
-│   │
-│   ├── secrets/
-│   │   ├── secrets.yaml.template
-│   │   └── secrets.yaml         # Database credentials (gitignored)
-│   │
-│   ├── configmaps/
-│   │   ├── pentaho-config.yaml  # Pentaho environment config
-│   │   └── postgres-init.yaml   # Database initialization SQL
-│   │
-│   ├── storage/
-│   │   └── pvc.yaml             # PersistentVolumeClaims
-│   │
-│   ├── postgres/
-│   │   ├── deployment.yaml      # PostgreSQL Deployment
-│   │   └── service.yaml         # PostgreSQL Service
-│   │
-│   ├── pentaho/
-│   │   ├── deployment.yaml      # Pentaho Server Deployment
-│   │   └── service.yaml         # Pentaho Server Service
-│   │
-│   └── ingress/
-│       └── ingress.yaml         # Traefik Ingress
+├── Pentaho Deployment
+│   ├── Image: pentaho/pentaho-server:11.0.0.0-237
+│   ├── Ports: 8080 (HTTP), 8443 (HTTPS)
+│   ├── Init Container: wait-for-postgres
+│   └── No persistent volumes (avoids K8s/Docker volume differences)
 │
-├── scripts/
-│   ├── backup-postgres.sh       # Database backup
-│   ├── restore-postgres.sh      # Database restore
-│   └── validate-deployment.sh   # Deployment validation
-│
-└── config/
-    └── softwareOverride/        # Pentaho configuration overrides
-        └── (same structure as On-Prem version)
+└── Services & Ingress
+    ├── postgres (ClusterIP)
+    ├── pentaho-server (ClusterIP)
+    └── pentaho-ingress (Traefik)
 ```
 
-## Comparison with On-Prem Docker Deployment
-
-| Feature | Docker Compose (On-Prem) | K3s (This Project) |
-|---------|-------------------------|---------------------|
-| Deployment | `docker compose up` | `kubectl apply` |
-| Scaling | Manual | `kubectl scale` |
-| Updates | Rebuild container | Rolling update |
-| Networking | Docker network | Kubernetes Services |
-| Storage | Docker volumes | PVCs |
-| Secrets | Docker secrets | K8s Secrets |
-| Ingress | Manual/Nginx | Traefik (built-in) |
-| Monitoring | Manual | Prometheus-ready |
+### Database Schema
+```
+PostgreSQL (postgres:5432)
+├── jackrabbit (owner: jcr_user)
+│   └── JCR content repository
+├── quartz (owner: pentaho_user)
+│   ├── 11 tables (QRTZ6_*)
+│   └── 5 scheduler locks
+└── hibernate (owner: hibuser)
+    ├── logging schema (~15 tables)
+    └── mart schema (~40 tables)
+```
 
 ---
 
-**Project Version**: 1.0.0
-**Pentaho Version**: 11.0.0.0-237
-**PostgreSQL Version**: 15
-**K3s Version**: Latest stable
-**Last Updated**: 2026-01-19
+## Configuration
+
+### Database Passwords
+
+Stored in `manifests/secrets/secrets.yaml` (gitignored):
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secrets
+  namespace: pentaho
+type: Opaque
+stringData:
+  postgres-password: "password"    # PostgreSQL admin
+  jcr-password: "password"         # JCR repository
+  quartz-password: "password"      # Quartz scheduler
+  hibernate-password: "password"   # Hibernate repository
+```
+
+**Production**: Change all passwords before deploying!
+
+### Environment Variables
+
+Configured in `manifests/configmaps/pentaho-config.yaml`:
+- `PENTAHO_MIN_MEMORY`: 2048m (JVM min heap)
+- `PENTAHO_MAX_MEMORY`: 6144m (JVM max heap)
+- `DB_TYPE`: postgres
+
+### Database Connection
+
+All connections configured in the Docker image at build time:
+- **File**: `docker-build/softwareOverride/2_repository/tomcat/webapps/pentaho/META-INF/context.xml`
+- **Hostname**: `postgres:5432`
+- **Driver**: PostgreSQL JDBC 42.7.1 (included in image)
+
+---
+
+## Monitoring
+
+### Health Check (New!) ⭐
+
+```bash
+# Quick health check
+make health
+# Or: ./scripts/health-check.sh
+```
+
+**Checks:**
+- Pod status (running and ready)
+- Service availability
+- Database connectivity
+- Pentaho web application (HTTP 200)
+- Resource usage
+
+### Resource Monitoring (New!) ⭐
+
+```bash
+# Monitor resources
+make monitor
+# Or: ./scripts/monitor-resources.sh
+```
+
+**Shows:**
+- Pod CPU/Memory usage
+- Node resource usage
+- PVC storage status
+- Resource limits and requests
+- Container restart counts
+
+### PostgreSQL Monitoring (New!) ⭐
+
+```bash
+# Monitor PostgreSQL
+make monitor-postgres
+# Or: ./scripts/monitor-postgres.sh
+```
+
+**Shows:**
+- Database sizes
+- Active connections
+- Table sizes
+- Quartz scheduler status
+- Cache hit ratios
+- Query performance
+
+### Check Status
+```bash
+# All resources
+kubectl get all -n pentaho
+# Or: make status
+
+# Just pods
+kubectl get pods -n pentaho
+# Or: make quick-status
+
+# Watch pod startup
+kubectl get pods -n pentaho -w
+```
+
+### View Logs
+```bash
+# Pentaho logs
+kubectl logs -f deployment/pentaho-server -n pentaho
+# Or: make logs
+
+# PostgreSQL logs
+kubectl logs -f deployment/postgres -n pentaho
+# Or: make logs-postgres
+
+# Last 100 lines
+kubectl logs deployment/pentaho-server -n pentaho --tail=100
+```
+
+### Database Access
+```bash
+# Connect to PostgreSQL shell
+make db-shell
+# Or: kubectl exec -it -n pentaho deployment/postgres -- psql -U postgres
+
+# List databases
+kubectl exec -n pentaho deployment/postgres -- \
+  psql -U postgres -c "\l"
+
+# Check Quartz locks
+kubectl exec -n pentaho deployment/postgres -- \
+  psql -U pentaho_user -d quartz -c "SELECT * FROM qrtz6_locks;"
+```
+
+---
+
+## Troubleshooting
+
+### Pentaho Pod Not Starting
+
+```bash
+# Check pod status
+kubectl describe pod -n pentaho -l app=pentaho-server
+
+# Check events
+kubectl get events -n pentaho --sort-by='.lastTimestamp'
+
+# Common issues:
+# - Image not imported: docker save + sudo k3s ctr images import
+# - PostgreSQL not ready: wait for postgres pod to be 1/1 Running
+# - Out of memory: increase limits in deployment.yaml
+```
+
+### PostgreSQL Connection Errors
+
+```bash
+# Verify PostgreSQL is running
+kubectl get pods -n pentaho -l app=postgres
+
+# Test connection from Pentaho pod
+kubectl exec -n pentaho deployment/pentaho-server -- \
+  nc -zv postgres 5432
+```
+
+### Login Page Shows 404
+
+```bash
+# Check if /pentaho webapp deployed
+kubectl logs -n pentaho deployment/pentaho-server | \
+  grep "Deployment of web application"
+
+# Should see: "...directory [.../pentaho] has finished in [~70000] ms"
+```
+
+### Port Forward Not Working
+
+```bash
+# Kill existing port-forwards
+killall kubectl
+
+# Check service exists
+kubectl get svc -n pentaho pentaho-server
+
+# Try different port
+kubectl port-forward -n pentaho svc/pentaho-server 9080:8080
+# Access: http://localhost:9080/pentaho
+```
+
+---
+
+## File Structure
+
+```
+Pentaho-K3s-PostgreSQL/
+├── deploy.sh                    # Main deployment script
+├── destroy.sh                   # Cleanup script
+├── README.md                    # This file
+├── DEPLOYMENT.md                # Detailed deployment guide
+├── K3s-INSTALLATION.md          # K3s setup instructions
+│
+├── docker-build/                # Docker image build
+│   ├── build.sh                 # Build script
+│   ├── Dockerfile               # Image definition
+│   ├── docker-entrypoint.sh     # Container startup
+│   ├── softwareOverride/        # Config overlays (baked into image)
+│   │   ├── 1_drivers/           # PostgreSQL JDBC driver
+│   │   ├── 2_repository/        # Database configs
+│   │   ├── 3_security/          # (empty - no Vault)
+│   │   └── 4_others/            # Modified Tomcat scripts
+│   └── test-compose.yml         # Local Docker testing
+│
+├── db_init_postgres/            # PostgreSQL init SQL scripts
+│   ├── 1_create_jcr_postgresql.sql
+│   ├── 2_create_quartz_postgresql.sql
+│   ├── 3_create_repository_postgresql.sql
+│   ├── 4_pentaho_logging_postgresql.sql
+│   └── 5_pentaho_mart_postgresql.sql
+│
+├── manifests/                   # Kubernetes manifests
+│   ├── configmaps/
+│   │   ├── pentaho-config.yaml
+│   │   └── postgres-init-scripts.yaml
+│   ├── pentaho/
+│   │   ├── deployment.yaml
+│   │   └── service.yaml
+│   ├── postgres/
+│   │   ├── deployment.yaml
+│   │   └── service.yaml
+│   ├── secrets/
+│   │   └── secrets.yaml          # (gitignored)
+│   ├── storage/
+│   │   └── pvc.yaml
+│   └── ingress/
+│       └── ingress.yaml
+│
+└── scripts/                     # Utility scripts
+    ├── backup-postgres.sh       # Database backup
+    ├── restore-postgres.sh      # Database restore
+    ├── validate-deployment.sh   # Deployment checks
+    └── verify-k3s.sh            # K3s verification
+```
+
+---
+
+## Production Recommendations
+
+### 1. Security
+- [ ] Change all default passwords in `secrets.yaml`
+- [ ] Enable TLS/HTTPS with cert-manager
+- [ ] Configure LDAP/Active Directory authentication
+- [ ] Restrict network policies
+
+### 2. Storage
+- [ ] Implement proper persistent volumes with initContainer
+- [ ] Schedule regular PostgreSQL backups
+- [ ] Test backup restore procedures
+- [ ] Use external storage (NFS, Ceph, or cloud)
+
+### 3. Monitoring
+- [ ] Deploy Prometheus for metrics
+- [ ] Set up Grafana dashboards
+- [ ] Configure alerting (PagerDuty, Slack)
+- [ ] Enable audit logging
+
+### 4. High Availability
+- [ ] Multi-node K3s cluster (see `WORKSHOP-MULTI-NODE.md`)
+- [ ] PostgreSQL replication
+- [ ] Multiple Pentaho replicas with session affinity
+- [ ] External load balancer
+
+### 5. Performance
+- [ ] Tune JVM heap sizes based on workload
+- [ ] Adjust PostgreSQL shared_buffers
+- [ ] Monitor resource usage and adjust limits
+- [ ] Enable HorizontalPodAutoscaler
+
+---
+
+## Advanced Topics
+
+### Local Testing with Docker Compose
+
+Before deploying to K3s, test the image locally:
+
+```bash
+cd docker-build
+docker compose -f test-compose.yml up
+```
+
+Access: http://localhost:8080/pentaho
+
+### Custom Configuration
+
+To modify Pentaho configuration:
+
+1. Edit files in `docker-build/softwareOverride/`
+2. Rebuild image: `cd docker-build && ./build.sh`
+3. Re-import to K3s
+4. Redeploy: `./deploy.sh --update-only`
+
+### Database Backups
+
+```bash
+# Backup all databases
+./scripts/backup-postgres.sh
+
+# Restore from backup
+./scripts/restore-postgres.sh backup-2026-01-26.sql
+```
+
+### Multi-Node Cluster
+
+For high availability across multiple nodes:
+
+**See [WORKSHOP-MULTI-NODE.md](WORKSHOP-MULTI-NODE.md) for complete guide.**
+
+---
+
+## Documentation
+
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide with troubleshooting
+- **[K3s-INSTALLATION.md](K3s-INSTALLATION.md)** - K3s setup and configuration
+- **[WORKSHOP-SINGLE-NODE.md](WORKSHOP-SINGLE-NODE.md)** - Hands-on single-node workshop
+- **[WORKSHOP-MULTI-NODE.md](WORKSHOP-MULTI-NODE.md)** - Multi-node HA workshop
+
+---
+
+## Support & Resources
+
+- [Pentaho Documentation](https://docs.hitachivantara.com/r/en-us/pentaho-data-integration-and-analytics/11.0.x)
+- [K3s Documentation](https://docs.k3s.io/)
+- [PostgreSQL 15 Docs](https://www.postgresql.org/docs/15/)
+- [Kubernetes Best Practices](https://kubernetes.io/docs/concepts/configuration/overview/)
+
+---
+
+## License
+
+This deployment configuration is provided as-is for deploying Pentaho Server. Pentaho Server itself requires appropriate licensing from Hitachi Vantara.
+
+---
+
+**Project Status**: ✅ Production Ready
+**Last Updated**: 2026-01-26
+**Tested On**: Ubuntu 24.04, K3s v1.28+

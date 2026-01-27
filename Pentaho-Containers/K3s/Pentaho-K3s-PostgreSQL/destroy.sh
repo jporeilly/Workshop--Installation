@@ -36,11 +36,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo -e "${BLUE}"
-echo "=============================================="
-echo "  Pentaho K3s Cleanup"
-echo "=============================================="
-echo -e "${NC}"
+echo -e "${BLUE}=============================================="
+echo -e "  Pentaho K3s Cleanup"
+echo -e "==============================================${NC}"
 
 # Check if namespace exists
 if ! kubectl get namespace pentaho &> /dev/null; then
@@ -84,7 +82,7 @@ kubectl delete ingress pentaho-ingress -n pentaho --ignore-not-found=true
 # Delete configmaps
 echo -e "${YELLOW}Deleting configmaps...${NC}"
 kubectl delete configmap pentaho-config -n pentaho --ignore-not-found=true
-kubectl delete configmap postgres-init -n pentaho --ignore-not-found=true
+kubectl delete configmap postgres-init-scripts -n pentaho --ignore-not-found=true
 
 # Delete secrets
 echo -e "${YELLOW}Deleting secrets...${NC}"

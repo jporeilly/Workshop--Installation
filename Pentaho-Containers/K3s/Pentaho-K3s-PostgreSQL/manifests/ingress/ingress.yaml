@@ -1,8 +1,25 @@
 # =============================================================================
 # Pentaho Ingress
 # =============================================================================
-# Traefik Ingress for external access to Pentaho Server
-# K3s includes Traefik by default
+# Ingress resource for routing external HTTP/HTTPS traffic to Pentaho Server.
+#
+# K3s includes Traefik ingress controller by default, which:
+#   - Listens on ports 80 (HTTP) and 443 (HTTPS) on all nodes
+#   - Routes traffic based on hostnames and paths
+#   - Provides automatic SSL termination (when TLS is configured)
+#   - Supports middlewares for advanced routing (auth, rate limiting, etc.)
+#
+# Access Methods:
+#   1. Via hostname (pentaho.local):
+#      - Add to /etc/hosts: <node-ip> pentaho.local
+#      - Access: http://pentaho.local/pentaho
+#
+#   2. Via direct IP (any cluster node):
+#      - Access: http://<node-ip>/pentaho
+#      - Works without DNS configuration
+#
+# Traefik Documentation:
+#   https://doc.traefik.io/traefik/routing/providers/kubernetes-ingress/
 # =============================================================================
 
 apiVersion: networking.k8s.io/v1
@@ -14,34 +31,84 @@ metadata:
     app.kubernetes.io/name: pentaho
     app.kubernetes.io/component: ingress
   annotations:
-    # Traefik annotations
+    # ---------------------------------------------------------------------
+    # Traefik Entry Points
+    # ---------------------------------------------------------------------
+    # Specifies which Traefik entry points handle this ingress
+    # "web" = HTTP port 80 (default)
+    # For HTTPS, use "websecure" or both: web,websecure
     traefik.ingress.kubernetes.io/router.entrypoints: web
-    # Uncomment for HTTPS redirect
+
+    # ---------------------------------------------------------------------
+    # HTTPS Redirect (Optional)
+    # ---------------------------------------------------------------------
+    # Uncomment to automatically redirect HTTP to HTTPS
+    # Requires TLS configuration below
     # traefik.ingress.kubernetes.io/router.middlewares: pentaho-redirect-https@kubernetescrd
 
-    # For larger file uploads (reports, etc.)
+    # ---------------------------------------------------------------------
+    # Request Buffering
+    # ---------------------------------------------------------------------
+    # Enable buffering for large file uploads (reports, data files)
+    # Traefik buffers the entire request before forwarding to backend
+    # Prevents timeout issues with slow uploads
     traefik.ingress.kubernetes.io/buffering: "true"
 
-    # CORS settings if needed
+    # ---------------------------------------------------------------------
+    # CORS Configuration (Optional)
+    # ---------------------------------------------------------------------
+    # Uncomment to enable Cross-Origin Resource Sharing
+    # Useful if accessing Pentaho from different domains (e.g., embedded dashboards)
     # traefik.ingress.kubernetes.io/headers.accesscontrolallowmethods: "GET,OPTIONS,PUT,POST,DELETE"
     # traefik.ingress.kubernetes.io/headers.accesscontrolalloworigin: "*"
+    # traefik.ingress.kubernetes.io/headers.accesscontrolallowcredentials: "true"
+
+    # ---------------------------------------------------------------------
+    # Additional Useful Annotations
+    # ---------------------------------------------------------------------
+    # Session affinity (sticky sessions):
+    # traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
+    #
+    # Custom timeouts:
+    # traefik.ingress.kubernetes.io/router.timeout: "300s"
+    #
+    # Rate limiting:
+    # traefik.ingress.kubernetes.io/router.middlewares: pentaho-rate-limit@kubernetescrd
+
 spec:
+  # Specifies that this ingress is handled by Traefik
+  # K3s sets Traefik as the default ingress class
   ingressClassName: traefik
+
+  # ---------------------------------------------------------------------
+  # Routing Rules
+  # ---------------------------------------------------------------------
   rules:
-    # Access via hostname
+    # Rule 1: Host-based routing
+    # Routes requests to pentaho.local to Pentaho Server
+    # Best for production with proper DNS
     - host: pentaho.local
       http:
         paths:
+          # Match all paths under pentaho.local
+          # pathType: Prefix matches /pentaho, /pentaho/api, etc.
           - path: /
             pathType: Prefix
             backend:
               service:
+                # Target service name in same namespace
                 name: pentaho-server
                 port:
+                  # Pentaho Server's HTTP port
                   number: 8080
-    # Also allow access without hostname (direct IP)
+
+    # Rule 2: Path-based routing (no hostname)
+    # Routes http://<any-ip>/pentaho to Pentaho Server
+    # Works without DNS configuration - good for testing
     - http:
         paths:
+          # Only match /pentaho path
+          # Must include /pentaho in URL
           - path: /pentaho
             pathType: Prefix
             backend:
@@ -49,8 +116,29 @@ spec:
                 name: pentaho-server
                 port:
                   number: 8080
-  # Uncomment to enable TLS
+
+  # ---------------------------------------------------------------------
+  # TLS/HTTPS Configuration (Optional)
+  # ---------------------------------------------------------------------
+  # Uncomment to enable HTTPS
+  # Requires creating a TLS secret with certificate and key
+  #
+  # Create secret with:
+  #   kubectl create secret tls pentaho-tls-secret \
+  #     --cert=path/to/tls.crt \
+  #     --key=path/to/tls.key \
+  #     -n pentaho
+  #
+  # Or use cert-manager for automatic certificate management:
+  #   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+  #
   # tls:
   #   - hosts:
   #       - pentaho.local
+  #     # Reference to TLS secret containing certificate and private key
   #     secretName: pentaho-tls-secret
+  #
+  # After enabling TLS:
+  #   - Access via: https://pentaho.local/pentaho
+  #   - Update router.entrypoints annotation to: web,websecure
+  #   - Enable HTTPS redirect annotation above

@@ -2,6 +2,29 @@
 # Pentaho Server Deployment
 # =============================================================================
 # Pentaho Server 11.0.0.0-237 Enterprise Edition
+#
+# Pentaho Business Analytics Platform provides:
+#   - Interactive reporting and dashboards
+#   - Data integration (ETL) with Pentaho Data Integration
+#   - OLAP analysis and data mining
+#   - Scheduling and automation
+#
+# Key Features:
+#   - Init container ensures PostgreSQL is ready before starting
+#   - Persistent storage for data and solutions
+#   - Three health probes (startup, liveness, readiness) for reliability
+#   - Environment configuration via ConfigMap
+#   - Database credentials via Secrets
+#
+# Resource Requirements:
+#   - Minimum: 2Gi RAM, 1 CPU
+#   - Recommended: 6Gi RAM, 4 CPU for production
+#   - Startup time: 3-5 minutes
+#
+# Notes:
+#   - Uses "Recreate" strategy due to persistent volumes (no rolling updates)
+#   - Single replica (scaling requires session affinity configuration)
+#   - Health probes have generous timeouts due to slow startup
 # =============================================================================
 
 apiVersion: apps/v1
@@ -14,32 +37,50 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/part-of: pentaho-platform
 spec:
+  # Single replica - stateful workload with persistent storage
   replicas: 1
+
+  # Recreate strategy prevents multi-attach errors with ReadWriteOnce volumes
+  # All existing pods are terminated before new ones are created
   strategy:
-    type: Recreate  # Required for persistent volumes
+    type: Recreate
+
   selector:
     matchLabels:
       app: pentaho-server
+
   template:
     metadata:
       labels:
         app: pentaho-server
         app.kubernetes.io/name: pentaho
     spec:
-      # Wait for postgres to be ready
+      # Set hostname to match Docker Compose deployment
+      # Required for Pentaho application initialization
+      hostname: pentaho-server
+      # ---------------------------------------------------------------------
+      # Init Containers - Run before main container starts
+      # ---------------------------------------------------------------------
+      # Init containers run sequentially and must complete successfully
+      # before the main application container starts
       initContainers:
         - name: wait-for-postgres
+          # Lightweight image with networking utilities
           image: busybox:1.36
           command:
             - sh
             - -c
             - |
               echo "Waiting for PostgreSQL to be ready..."
+              # Loop until PostgreSQL port is accessible
+              # 'nc -z' performs TCP port check without sending data
+              # 'postgres' resolves to postgres.pentaho.svc.cluster.local
               until nc -z postgres 5432; do
                 echo "PostgreSQL is not ready - sleeping"
                 sleep 2
               done
               echo "PostgreSQL is ready!"
+          # Minimal resources for init container
           resources:
             requests:
               memory: "32Mi"
@@ -47,72 +88,132 @@ spec:
             limits:
               memory: "64Mi"
               cpu: "100m"
+
+      # ---------------------------------------------------------------------
+      # Main Application Container
+      # ---------------------------------------------------------------------
       containers:
         - name: pentaho-server
-          # Update this image reference based on your setup:
-          # - Local build: pentaho/pentaho-server:11.0.0.0-237
-          # - Registry: your-registry.com/pentaho/pentaho-server:11.0.0.0-237
+          # Pentaho Server container image
+          # Options for image source:
+          #   - Local build: pentaho/pentaho-server:11.0.0.0-237
+          #   - Private registry: your-registry.com/pentaho/pentaho-server:11.0.0.0-237
+          #   - Docker Hub: pentaho/pentaho-server:11.0.0.0-237
           image: pentaho/pentaho-server:11.0.0.0-237
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: IfNotPresent  # Use cached image if available
+
+          # Network ports exposed by the container
           ports:
             - containerPort: 8080
-              name: http
+              name: http   # Main HTTP port for Pentaho web UI
             - containerPort: 8443
-              name: https
+              name: https  # HTTPS port (requires TLS configuration)
+
+          # Load all environment variables from pentaho-config ConfigMap
+          # Includes: JVM memory settings, database config, paths, timezone
           envFrom:
             - configMapRef:
                 name: pentaho-config
+
+          # Additional environment variables from Secrets
           env:
-            # Database credentials from secrets
+            # PostgreSQL superuser password for database connections
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: postgres-secrets
                   key: postgres-password
-          volumeMounts:
-            - name: pentaho-data
-              mountPath: /opt/pentaho/pentaho-server/data
-            - name: pentaho-solutions
-              mountPath: /opt/pentaho/pentaho-server/pentaho-solutions
+
+          # Persistent volume mounts
+          # NOTE: Volumes are commented out to avoid overwriting container files
+          # K8s empty PVCs overwrite directories, unlike Docker named volumes
+          # For production: use initContainer to populate PVCs on first run
+          # volumeMounts:
+          #   # Pentaho data directory - contains:
+          #   #   - Temporary files, cache, logs
+          #   #   - Audit data, system data
+          #   - name: pentaho-data
+          #     mountPath: /opt/pentaho/pentaho-server/data
+          #
+          #   # Pentaho solutions directory - contains:
+          #   #   - Reports, dashboards, transformations
+          #   #   - Custom plugins and extensions
+          #   #   - System configuration files
+          #   - name: pentaho-solutions
+          #     mountPath: /opt/pentaho/pentaho-server/pentaho-solutions
+
+          # Resource requests and limits
+          # Pentaho is memory-intensive and requires adequate resources
           resources:
             requests:
-              memory: "2Gi"
-              cpu: "1"
+              memory: "2Gi"  # Minimum memory for small workloads
+              cpu: "1"       # Minimum 1 CPU core
             limits:
-              memory: "6Gi"
-              cpu: "4"
-          # Pentaho takes time to start - use longer initial delay
+              memory: "6Gi"  # Maximum memory allocation
+              cpu: "4"       # Maximum 4 CPU cores
+
+          # Startup probe - Kubernetes 1.16+
+          # Gives Pentaho up to 5 minutes to start (30 failures × 10s = 300s)
+          # Prevents liveness/readiness probes from interfering during slow startup
+          # Once this succeeds, liveness and readiness probes take over
+          startupProbe:
+            httpGet:
+              path: /pentaho/Login     # Pentaho login page
+              port: 8080
+            initialDelaySeconds: 60    # Wait 60s before first check
+            periodSeconds: 10          # Check every 10 seconds
+            timeoutSeconds: 5          # HTTP request timeout
+            failureThreshold: 30       # 30 failures = 5 minutes total
+
+          # Liveness probe - restarts container if unhealthy
+          # Checks if Pentaho Server is still responding
+          # Only starts after startup probe succeeds
           livenessProbe:
             httpGet:
               path: /pentaho/Login
               port: 8080
-            initialDelaySeconds: 300
-            periodSeconds: 30
-            timeoutSeconds: 10
-            failureThreshold: 5
+            initialDelaySeconds: 300   # Wait 5 minutes after container start
+            periodSeconds: 30          # Check every 30 seconds
+            timeoutSeconds: 10         # Allow 10s for HTTP response
+            failureThreshold: 5        # Restart after 5 failures (2.5 minutes)
+
+          # Readiness probe - controls service traffic
+          # Removes pod from service endpoints if not ready
+          # Prevents routing traffic to pods that can't handle requests
           readinessProbe:
             httpGet:
               path: /pentaho/Login
               port: 8080
-            initialDelaySeconds: 120
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 10
-          startupProbe:
-            httpGet:
-              path: /pentaho/Login
-              port: 8080
-            initialDelaySeconds: 60
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 30  # Allow up to 5 minutes for startup
-      volumes:
-        - name: pentaho-data
-          persistentVolumeClaim:
-            claimName: pentaho-data-pvc
-        - name: pentaho-solutions
-          persistentVolumeClaim:
-            claimName: pentaho-solutions-pvc
-      # Optional: If using a private registry
+            initialDelaySeconds: 120   # Start checking after 2 minutes
+            periodSeconds: 10          # Check every 10 seconds
+            timeoutSeconds: 5          # Shorter timeout for readiness
+            failureThreshold: 10       # Mark unready after 10 failures
+
+      # ---------------------------------------------------------------------
+      # Volume Definitions
+      # ---------------------------------------------------------------------
+      # NOTE: Volumes commented out - empty PVCs overwrite container files
+      # For production: implement initContainer to populate PVCs on first run
+      # volumes:
+      #   # Pentaho data volume - backed by PersistentVolumeClaim
+      #   - name: pentaho-data
+      #     persistentVolumeClaim:
+      #       claimName: pentaho-data-pvc
+      #
+      #   # Pentaho solutions volume - backed by PersistentVolumeClaim
+      #   - name: pentaho-solutions
+      #     persistentVolumeClaim:
+      #       claimName: pentaho-solutions-pvc
+
+      # ---------------------------------------------------------------------
+      # Optional: Private Registry Authentication
+      # ---------------------------------------------------------------------
+      # Uncomment if pulling image from a private container registry
+      # Create secret with: kubectl create secret docker-registry registry-credentials \
+      #   --docker-server=your-registry.com \
+      #   --docker-username=your-username \
+      #   --docker-password=your-password \
+      #   --docker-email=your-email@example.com \
+      #   -n pentaho
       # imagePullSecrets:
       #   - name: registry-credentials

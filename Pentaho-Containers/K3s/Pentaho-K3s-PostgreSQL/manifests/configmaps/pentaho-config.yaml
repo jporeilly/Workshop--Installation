@@ -1,7 +1,29 @@
 # =============================================================================
 # Pentaho Server ConfigMap
 # =============================================================================
-# Environment configuration for Pentaho Server
+# Centralized environment configuration for Pentaho Server container
+#
+# Purpose:
+#   - Defines all environment variables used by Pentaho Server
+#   - Separates configuration from deployment manifest
+#   - Allows easy configuration updates without modifying container image
+#   - Can be updated independently and trigger rolling updates
+#
+# Usage:
+#   Referenced in pentaho deployment.yaml via envFrom:
+#     envFrom:
+#       - configMapRef:
+#           name: pentaho-config
+#
+# Modification:
+#   Edit values and apply:
+#     kubectl apply -f manifests/configmaps/pentaho-config.yaml
+#     kubectl rollout restart deployment/pentaho-server -n pentaho
+#
+# Best Practices:
+#   - Store sensitive data (passwords) in Secrets, not ConfigMaps
+#   - Use reasonable defaults that work for most environments
+#   - Document all configuration options and their impact
 # =============================================================================
 
 apiVersion: v1
@@ -12,19 +34,129 @@ metadata:
   labels:
     app.kubernetes.io/name: pentaho
     app.kubernetes.io/component: config
+    app.kubernetes.io/part-of: pentaho-platform
 data:
+  # ---------------------------------------------------------------------------
   # JVM Memory Settings
+  # ---------------------------------------------------------------------------
+  # Controls Java Virtual Machine heap memory allocation for Pentaho Server
+  #
+  # PENTAHO_MIN_MEMORY: Initial heap size (-Xms)
+  #   - Allocated at JVM startup
+  #   - Setting equal to max reduces GC overhead
+  #   - Should be at least 2048m for production
+  #
+  # PENTAHO_MAX_MEMORY: Maximum heap size (-Xmx)
+  #   - Upper limit for heap growth
+  #   - Must be less than container memory limit
+  #   - Recommended: 4096m-8192m for production workloads
+  #
+  # Memory Guidelines:
+  #   Development:  Min=1024m, Max=2048m
+  #   Testing:      Min=2048m, Max=4096m (current)
+  #   Production:   Min=4096m, Max=8192m
+  #   Heavy loads:  Min=8192m, Max=12288m
+  #
+  # NOTE: Container memory limits (deployment.yaml) should be ~1.5x PENTAHO_MAX_MEMORY
+  #       to account for non-heap memory (threads, native memory, etc.)
   PENTAHO_MIN_MEMORY: "2048m"
   PENTAHO_MAX_MEMORY: "4096m"
 
+  # ---------------------------------------------------------------------------
   # Database Configuration
+  # ---------------------------------------------------------------------------
+  # Connection settings for Pentaho repository databases
+  #
+  # DB_TYPE: Database type
+  #   - Supported: postgres, mysql, oracle, mssql
+  #   - Determines JDBC driver and connection URL format
+  #   - Must match database deployment
+  #
+  # DB_HOST: Database hostname
+  #   - Uses Kubernetes service name: "postgres"
+  #   - Resolves to: postgres.pentaho.svc.cluster.local
+  #   - For external databases, use FQDN or IP address
+  #
+  # DB_PORT: Database port
+  #   - PostgreSQL default: 5432
+  #   - Must match database service port
+  #
+  # Pentaho uses THREE separate databases:
+  #   1. jackrabbit - Content repository (reports, dashboards, files)
+  #   2. quartz      - Job scheduling and triggers
+  #   3. hibernate   - User/role management, audit data
+  #
+  # Database credentials are stored in postgres-secrets Secret
   DB_TYPE: "postgres"
   DB_HOST: "postgres"
   DB_PORT: "5432"
 
-  # Pentaho Paths
+  # ---------------------------------------------------------------------------
+  # Pentaho Installation Paths
+  # ---------------------------------------------------------------------------
+  # Directory paths inside the container
+  #
+  # PENTAHO_SERVER_PATH: Main Pentaho Server directory
+  #   - Contains: tomcat/, data/, pentaho-solutions/
+  #   - Defined by Dockerfile during image build
+  #   - Should match path in container image
+  #
+  # INSTALLATION_PATH: Parent installation directory
+  #   - Parent of PENTAHO_SERVER_PATH
+  #   - Used by init scripts and configuration
+  #
+  # These paths are used by:
+  #   - entrypoint.sh for initialization
+  #   - Configuration file generation
+  #   - Volume mount points (see deployment.yaml)
   PENTAHO_SERVER_PATH: "/opt/pentaho/pentaho-server"
   INSTALLATION_PATH: "/opt/pentaho"
 
-  # Timezone
+  # ---------------------------------------------------------------------------
+  # Timezone Configuration
+  # ---------------------------------------------------------------------------
+  # Sets container and JVM timezone
+  #
+  # TZ: Standard timezone identifier
+  #   - Affects: Logs, scheduled jobs, report timestamps
+  #   - Format: Continent/City (IANA timezone database)
+  #   - Examples:
+  #       America/New_York  (Eastern Time)
+  #       America/Chicago   (Central Time)
+  #       America/Denver    (Mountain Time)
+  #       America/Los_Angeles (Pacific Time)
+  #       Europe/London     (GMT/BST)
+  #       Asia/Tokyo        (JST)
+  #       UTC               (Coordinated Universal Time)
+  #
+  # Impact:
+  #   - Scheduled jobs run according to this timezone
+  #   - Report execution timestamps use this timezone
+  #   - Log file entries use this timezone
+  #
+  # NOTE: Should match timezone of primary users/schedulers
   TZ: "America/New_York"
+
+  # ---------------------------------------------------------------------------
+  # Additional Configuration Options (Optional)
+  # ---------------------------------------------------------------------------
+  # Uncomment and customize as needed:
+  #
+  # PENTAHO_DI_JAVA_OPTIONS: Additional JVM options for Data Integration
+  #   Example: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+  #
+  # PENTAHO_DEBUG_MODE: Enable remote debugging
+  #   Values: "true" or "false"
+  #   Opens debug port 8044 (requires port mapping in deployment)
+  #
+  # PENTAHO_LOG_LEVEL: Logging verbosity
+  #   Values: ERROR, WARN, INFO, DEBUG, TRACE
+  #   Default: INFO
+  #
+  # PENTAHO_SERVER_NAME: Fully-qualified server name
+  #   Used for URL generation in emails and exports
+  #   Example: "pentaho.example.com"
+  #
+  # PENTAHO_PORT: Override Tomcat HTTP port
+  #   Default: 8080
+  #   Must match containerPort in deployment.yaml

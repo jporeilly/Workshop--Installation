@@ -2,6 +2,23 @@
 # PostgreSQL Deployment
 # =============================================================================
 # PostgreSQL 15 database server for Pentaho repositories
+#
+# This deployment creates a single PostgreSQL pod that hosts three Pentaho
+# repository databases:
+#   - jackrabbit: JCR content repository for file storage and versioning
+#   - quartz: Job scheduler database for scheduling reports and ETL jobs
+#   - hibernate: Pentaho configuration repository for system settings
+#
+# Key Features:
+#   - Persistent storage using PersistentVolumeClaim (data survives pod restarts)
+#   - Automatic database initialization via SQL scripts in ConfigMap
+#   - Health probes for automatic restart on failure
+#   - Resource limits to prevent resource exhaustion
+#
+# Notes:
+#   - Uses "Recreate" strategy (not RollingUpdate) due to persistent volume
+#   - Single replica only (PostgreSQL clustering requires additional setup)
+#   - Initialization scripts run only on first startup (empty database)
 # =============================================================================
 
 apiVersion: apps/v1
@@ -14,12 +31,18 @@ metadata:
     app.kubernetes.io/component: database
     app.kubernetes.io/part-of: pentaho-platform
 spec:
+  # Single replica - stateful workload
   replicas: 1
+
+  # Recreate strategy ensures only one pod accesses the persistent volume
+  # RollingUpdate would cause "multi-attach error" with ReadWriteOnce volumes
   strategy:
-    type: Recreate  # Required for persistent volumes
+    type: Recreate
+
   selector:
     matchLabels:
       app: postgres
+
   template:
     metadata:
       labels:
@@ -28,57 +51,93 @@ spec:
     spec:
       containers:
         - name: postgres
+          # Official PostgreSQL 15 image from Docker Hub
           image: postgres:15
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: IfNotPresent  # Use cached image if available
+
           ports:
             - containerPort: 5432
-              name: postgres
+              name: postgres  # Standard PostgreSQL port
+
+          # Environment variables for PostgreSQL configuration
           env:
+            # Superuser password loaded from Kubernetes Secret
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: postgres-secrets
                   key: postgres-password
+
+            # Custom data directory within the mounted volume
+            # Required to avoid conflicts with volume mount lost+found directory
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
+
+            # Timezone for timestamp logging
             - name: TZ
               value: "America/New_York"
+
+          # Volume mounts for data persistence and initialization
           volumeMounts:
+            # Persistent storage for PostgreSQL data files
+            # Contains all database files, WAL logs, and configuration
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+
+            # Initialization scripts mounted from ConfigMap
+            # Scripts in /docker-entrypoint-initdb.d run on first startup
+            # Executed in alphabetical order: 01-create-jcr.sql, 02-create-quartz.sql, etc.
             - name: postgres-init
               mountPath: /docker-entrypoint-initdb.d
+
+          # Resource requests and limits
+          # Requests: Minimum guaranteed resources
+          # Limits: Maximum resources container can use
           resources:
             requests:
-              memory: "512Mi"
-              cpu: "500m"
+              memory: "512Mi"  # Minimum memory allocation
+              cpu: "500m"      # Minimum 0.5 CPU cores
             limits:
-              memory: "2Gi"
-              cpu: "2"
+              memory: "2Gi"    # Maximum memory (OOM kill if exceeded)
+              cpu: "2"         # Maximum 2 CPU cores
+
+          # Liveness probe - restarts container if PostgreSQL is unresponsive
+          # pg_isready checks if PostgreSQL is accepting connections
           livenessProbe:
             exec:
               command:
                 - pg_isready
                 - -U
                 - postgres
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+            initialDelaySeconds: 30  # Wait 30s before first check
+            periodSeconds: 10        # Check every 10 seconds
+            timeoutSeconds: 5        # Command must complete within 5s
+            failureThreshold: 3      # Restart after 3 consecutive failures
+
+          # Readiness probe - removes pod from service if not ready
+          # Used to prevent traffic to pods that can't handle requests
           readinessProbe:
             exec:
               command:
                 - pg_isready
                 - -U
                 - postgres
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 3
+            initialDelaySeconds: 5   # Start checking after 5s
+            periodSeconds: 5         # Check every 5 seconds
+            timeoutSeconds: 3        # Shorter timeout for readiness
+            failureThreshold: 3      # Mark unready after 3 failures
+
+      # Volume definitions
       volumes:
+        # Persistent volume for PostgreSQL data
+        # Backed by K3s local-path provisioner (hostPath on node)
         - name: postgres-data
           persistentVolumeClaim:
             claimName: postgres-data-pvc
+
+        # ConfigMap containing complete SQL initialization scripts
+        # Scripts create databases, users, tables, and populate required data
+        # Sourced from working Docker Compose project
         - name: postgres-init
           configMap:
-            name: postgres-init
+            name: postgres-init-scripts

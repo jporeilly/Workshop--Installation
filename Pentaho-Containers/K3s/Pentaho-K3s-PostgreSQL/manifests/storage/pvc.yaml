@@ -1,12 +1,44 @@
 # =============================================================================
 # PersistentVolumeClaims for Pentaho Platform
 # =============================================================================
-# Storage for PostgreSQL and Pentaho Server data persistence
-# Uses K3s default local-path provisioner
+# Defines storage requirements for PostgreSQL and Pentaho Server data persistence.
+#
+# These PVCs use K3s's default local-path provisioner, which:
+#   - Dynamically provisions PersistentVolumes on the host filesystem
+#   - Creates directories under /var/lib/rancher/k3s/storage/
+#   - Suitable for development and single-node deployments
+#   - For production, consider network storage (NFS, Longhorn, Rook/Ceph)
+#
+# Total Storage Requested: 25Gi (10Gi + 10Gi + 5Gi)
+#
+# AccessModes:
+#   - ReadWriteOnce (RWO): Volume can be mounted read-write by a single node
+#   - Pods must be scheduled on the same node as the PV
+#   - Use ReadWriteMany (RWX) for shared storage across nodes
+#
+# Reclaim Policy (set by StorageClass):
+#   - Delete: PV is deleted when PVC is deleted (default for local-path)
+#   - Retain: PV persists after PVC deletion (must be manually cleaned up)
 # =============================================================================
 
 ---
+# =============================================================================
 # PostgreSQL Data Storage
+# =============================================================================
+# Stores all PostgreSQL database files including:
+#   - Data files for jackrabbit, quartz, and hibernate databases
+#   - WAL (Write-Ahead Log) files for transaction recovery
+#   - Configuration files (postgresql.conf, pg_hba.conf)
+#   - Database roles and permissions
+#
+# Size Considerations:
+#   - 10Gi is sufficient for small to medium deployments
+#   - Monitor disk usage: kubectl exec postgres-pod -n pentaho -- df -h
+#   - Increase size for production or large data volumes
+#
+# Location on Node:
+#   /var/lib/rancher/k3s/storage/pvc-<uuid>_pentaho_postgres-data-pvc/
+# =============================================================================
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -16,15 +48,37 @@ metadata:
     app.kubernetes.io/name: postgres
     app.kubernetes.io/component: storage
 spec:
+  # ReadWriteOnce: Only one pod can mount this volume at a time
+  # PostgreSQL deployment uses single replica, so RWO is sufficient
   accessModes:
     - ReadWriteOnce
+
+  # Use K3s default storage class (local-path provisioner)
   storageClassName: local-path
+
+  # Request 10Gi of storage
+  # Actual disk space is allocated on the node where pod is scheduled
   resources:
     requests:
       storage: 10Gi
 
 ---
+# =============================================================================
 # Pentaho Data Storage
+# =============================================================================
+# Stores Pentaho Server data directory contents including:
+#   - Temporary files and cache
+#   - System data and metadata
+#   - Audit logs
+#   - Embedded H2 databases (if any)
+#   - Session data
+#
+# This directory is separate from pentaho-solutions for better organization
+# and allows different backup/restore strategies for each
+#
+# Location on Node:
+#   /var/lib/rancher/k3s/storage/pvc-<uuid>_pentaho_pentaho-data-pvc/
+# =============================================================================
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -34,15 +88,41 @@ metadata:
     app.kubernetes.io/name: pentaho
     app.kubernetes.io/component: data-storage
 spec:
+  # ReadWriteOnce: Volume bound to the node where Pentaho pod runs
   accessModes:
     - ReadWriteOnce
+
   storageClassName: local-path
+
+  # 10Gi for Pentaho data directory
+  # Increase if you have large cache requirements or many concurrent users
   resources:
     requests:
       storage: 10Gi
 
 ---
+# =============================================================================
 # Pentaho Solutions Storage
+# =============================================================================
+# Stores Pentaho solutions repository including:
+#   - User-created reports (.prpt files)
+#   - Dashboards and visualizations
+#   - Data integration transformations (.ktr files)
+#   - Jobs (.kjb files)
+#   - Custom plugins and extensions
+#   - System settings and configuration
+#   - Sample reports (if included)
+#
+# This is the most important volume to back up as it contains user content
+#
+# Size Considerations:
+#   - 5Gi is sufficient for moderate content
+#   - Increase for large numbers of reports or data files
+#   - Monitor usage: kubectl exec pentaho-pod -n pentaho -- du -sh /opt/pentaho/pentaho-server/pentaho-solutions
+#
+# Location on Node:
+#   /var/lib/rancher/k3s/storage/pvc-<uuid>_pentaho_pentaho-solutions-pvc/
+# =============================================================================
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -52,9 +132,14 @@ metadata:
     app.kubernetes.io/name: pentaho
     app.kubernetes.io/component: solutions-storage
 spec:
+  # ReadWriteOnce: Single pod access
   accessModes:
     - ReadWriteOnce
+
   storageClassName: local-path
+
+  # 5Gi for solutions repository
+  # Smaller than data PVC as solutions are typically code/config files
   resources:
     requests:
       storage: 5Gi

@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (same as K3s)
+  postgres:
+    image: postgres:15
+    container_name: pentaho-test-postgres
+    environment:
+      POSTGRES_PASSWORD: password
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: America/New_York
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    networks:
+      - pentaho-test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Initialize PostgreSQL databases using SQL scripts from working project
+  # Note: These scripts create users, databases, and all required tables including Quartz locks
+  postgres-init:
+    image: postgres:15
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: password
+    volumes:
+      # Mount the complete SQL init scripts from the working Docker Compose project
+      - /home/pentaho/Pentaho-Server-PostgreSQL/db_init_postgres:/docker-entrypoint-initdb.d:ro
+    networks:
+      - pentaho-test
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo 'Running PostgreSQL initialization scripts from working project...'
+        # Execute SQL files in order (already numbered: 1_, 2_, 3_, 4_, 5_)
+        for sql_file in /docker-entrypoint-initdb.d/*.sql; do
+          if [ -f "$$sql_file" ]; then
+            echo "Executing: $$(basename $$sql_file)"
+            # Run without prompting for password (uses PGPASSWORD env var)
+            psql -h postgres -U postgres -v ON_ERROR_STOP=1 -f "$$sql_file" || {
+              echo "Error executing $$sql_file"
+              exit 1
+            }
+          fi
+        done
+        echo 'Database initialization complete!'
+    restart: "no"
+
+  # Pentaho Server (using our built image)
+  pentaho-server:
+    image: pentaho/pentaho-server:11.0.0.0-237
+    container_name: pentaho-test-server
+    hostname: pentaho-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+    environment:
+      - PENTAHO_MIN_MEMORY=2048m
+      - PENTAHO_MAX_MEMORY=4096m
+      - PENTAHO_SERVER_PATH=/opt/pentaho/pentaho-server
+      - INSTALLATION_PATH=/opt/pentaho
+      - DB_TYPE=postgres
+      - TZ=America/New_York
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    networks:
+      - pentaho-test
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/pentaho/Login"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+
+networks:
+  pentaho-test:
+    driver: bridge
+
+volumes:
+  postgres_test_data:
+    driver: local
